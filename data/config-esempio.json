@@ -1,0 +1,17 @@
+{
+  "cinemas": [
+    {
+      "id": "cin-1",
+      "name": "Cinema di esempio",
+      "address": "Via Roma 1",
+      "city": "Roma"
+    }
+  ],
+  "workTypes": [
+    {
+      "id": "work-1",
+      "name": "Manutenzione tecnica",
+      "description": "Attività di manutenzione tecnica programmata"
+    }
+  ]
+}

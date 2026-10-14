@@ -1,0 +1,5 @@
+Ragione sociale: Azienda Esempio S.r.l.
+Partita IVA: 01234567890
+Codice fiscale: 01234567890
+PEC: esempio@pec.it
+Numero polizza: POL-123456

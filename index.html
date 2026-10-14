@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f4c81">
+  <title>Generatore Contratti</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div><strong>Generatore Contratti</strong><small>Elaborazione locale nel browser</small></div>
+    <nav>
+      <button class="nav-btn active" data-view="generator">Nuovo contratto</button>
+      <button class="nav-btn" data-view="setup">Setup</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section id="generator" class="view active">
+      <div class="notice">I file selezionati restano nel browser. La versione iniziale non li invia a server.</div>
+      <div class="grid two">
+        <article class="card">
+          <h2>1. Contratto master</h2>
+          <label class="drop-zone" id="masterDrop">
+            <input id="masterFile" type="file" accept=".docx" hidden>
+            <span>Trascina qui il master .docx oppure fai clic</span>
+            <strong id="masterName">Nessun file selezionato</strong>
+          </label>
+          <p class="hint">Usa segnaposto come <code>{RAGIONE_SOCIALE}</code>. Nel Word vanno scritti senza spezzare il testo.</p>
+        </article>
+        <article class="card">
+          <h2>2. Documenti di supporto</h2>
+          <label class="drop-zone" id="docsDrop">
+            <input id="docsFiles" type="file" accept=".pdf,.docx,.txt" multiple hidden>
+            <span>Trascina visura, assicurazione e altri documenti</span>
+            <strong id="docsCount">0 documenti</strong>
+          </label>
+          <ul id="docsList" class="file-list"></ul>
+        </article>
+      </div>
+
+      <article class="card">
+        <h2>3. Dati del contratto</h2>
+        <div class="form-grid">
+          <label>Cinema<select id="cinemaSelect"><option value="">Seleziona...</option></select></label>
+          <label>Tipologia di lavorazione<select id="workSelect"><option value="">Seleziona...</option></select></label>
+          <label>Numero contratto<input id="contractNumber" placeholder="CTR-2026-001"></label>
+          <label>Data contratto<input id="contractDate" type="date"></label>
+          <label>Ragione sociale<input id="companyName"></label>
+          <label>Partita IVA<input id="vatNumber"></label>
+          <label>Codice fiscale<input id="fiscalCode"></label>
+          <label>REA<input id="rea"></label>
+          <label class="span-2">Sede legale<input id="registeredOffice"></label>
+          <label>PEC<input id="pec" type="email"></label>
+          <label>Legale rappresentante<input id="legalRepresentative"></label>
+          <label>Compagnia assicurativa<input id="insuranceCompany"></label>
+          <label>Numero polizza<input id="policyNumber"></label>
+          <label>Scadenza polizza<input id="policyExpiry" type="date"></label>
+          <label>Massimale<input id="policyLimit"></label>
+          <label>Data inizio<input id="startDate" type="date"></label>
+          <label>Data fine<input id="endDate" type="date"></label>
+        </div>
+        <div class="actions">
+          <button id="extractBtn" class="secondary">Precompila dai documenti</button>
+          <button id="generateBtn" class="primary">Genera contratto Word</button>
+        </div>
+        <div id="status" class="status" aria-live="polite"></div>
+      </article>
+    </section>
+
+    <section id="setup" class="view">
+      <div class="grid two">
+        <article class="card">
+          <h2>Cinema</h2>
+          <form id="cinemaForm" class="inline-form">
+            <input name="name" placeholder="Nome cinema" required>
+            <input name="address" placeholder="Indirizzo">
+            <input name="city" placeholder="Città">
+            <button class="primary">Aggiungi</button>
+          </form>
+          <div id="cinemaList" class="setup-list"></div>
+        </article>
+        <article class="card">
+          <h2>Tipologie di lavorazione</h2>
+          <form id="workForm" class="inline-form">
+            <input name="name" placeholder="Nome lavorazione" required>
+            <textarea name="description" placeholder="Descrizione"></textarea>
+            <button class="primary">Aggiungi</button>
+          </form>
+          <div id="workList" class="setup-list"></div>
+        </article>
+      </div>
+      <article class="card">
+        <h2>Backup configurazione</h2>
+        <div class="actions left">
+          <button id="exportSetup" class="secondary">Esporta JSON</button>
+          <label class="button secondary">Importa JSON<input id="importSetup" type="file" accept=".json" hidden></label>
+          <button id="resetSetup" class="danger">Ripristina esempi</button>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer>Generatore Contratti · versione iniziale</footer>
+  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.8/dist/pizzip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.62.0/build/docxtemplater.js"></script>
+  <script src="assets/js/storage.js"></script>
+  <script src="assets/js/parser.js"></script>
+  <script src="assets/js/document-generator.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
