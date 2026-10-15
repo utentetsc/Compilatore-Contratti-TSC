@@ -18,7 +18,7 @@
 
   <main class="container">
     <section id="generator" class="view active">
-      <div class="notice">I file selezionati restano nel browser. La versione 0.2.8 non li invia a server.</div>
+      <div class="notice">I file selezionati restano nel browser. La versione 0.2.9 non li invia a server.</div>
       <div class="grid two">
         <article class="card">
           <h2>1. Contratto master</h2>
@@ -132,18 +132,75 @@
     </section>
   </main>
 
-  <footer>Generatore Contratti · versione 0.2.8</footer>
+  <footer>Generatore Contratti · versione 0.2.9</footer>
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.8/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.62.0/build/docxtemplater.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="assets/js/storage.js?v=0.2.8"></script>
-  <script src="assets/js/contract-db-importer.js?v=0.2.8"></script>
-  <script src="assets/js/excel-importer.js?v=0.2.8"></script>
-  <script src="assets/js/parser.js?v=0.2.8"></script>
-  <script src="assets/js/document-generator.js?v=0.2.8"></script>
-  <script src="assets/js/app.js?v=0.2.8"></script>
+  <script src="assets/js/storage.js?v=0.2.9"></script>
+  <script src="assets/js/contract-db-importer.js?v=0.2.9"></script>
+  <script src="assets/js/excel-importer.js?v=0.2.9"></script>
+  <script src="assets/js/parser.js?v=0.2.9"></script>
+  <script src="assets/js/document-generator.js?v=0.2.9"></script>
+  <script src="assets/js/app.js?v=0.2.9"></script>
+
+<script>
+/* v0.2.9 hotfix inline: lives in index.html so GitHub cannot keep an older nested app.js */
+(() => {
+  const norm = v => String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+  const cleanCompany = v => norm(v).replace(/\b(ragione sociale|denominazione sociale|denominazione|societa|ditta|fornitore|srl|spa|snc|sas)\b/g," ").replace(/\s+/g," ").trim();
+  const keyCinema = v => norm(v).replace(/^tsc\s+/,"").replace(/\s+[a-z]{2}$/i,"").trim();
+  function score(a,b){
+    a=cleanCompany(a); b=cleanCompany(b); if(!a||!b)return 0;
+    const ac=a.replace(/\s/g,""),bc=b.replace(/\s/g,"");
+    if(ac===bc)return 100;
+    if(ac.includes(bc)||bc.includes(ac))return Math.min(ac.length,bc.length)<=3?92:96;
+    const at=new Set(a.split(" ")),bt=new Set(b.split(" "));
+    const common=[...at].filter(x=>bt.has(x)).length;
+    return Math.round(100*common/Math.max(at.size,bt.size));
+  }
+  function refreshLists(){
+    if(typeof setup==='undefined'||!Array.isArray(setup.contracts))return;
+    setup.workTypes=[...new Set(setup.contracts.map(x=>String(x.workType||"").trim()).filter(x=>x&&!/^\d+(?:[.,]\d+)?$/.test(x)))].sort((a,b)=>a.localeCompare(b,"it")).map((name,i)=>({id:`work-live-${i}`,name,description:""}));
+    const names=[...new Set(setup.contracts.map(x=>x.cinema).filter(Boolean))];
+    for(const name of names){if(!setup.cinemas.some(c=>keyCinema(c.dbName||c.name)===keyCinema(name)))setup.cinemas.push({id:`live-${keyCinema(name).replace(/ /g,"-")}`,name,dbName:name,address:"",city:""})}
+    StorageService.save(setup); renderSetup();
+  }
+  function applyAutomaticDbMatch(){
+    refreshLists();
+    const source=(document.getElementById("documentCompanyName")?.value||document.getElementById("companyName")?.value||"").trim();
+    if(!source)return false;
+    const suppliers=[...new Set(setup.contracts.map(x=>x.supplier).filter(Boolean))];
+    const ranked=suppliers.map(name=>({name,score:score(source,name)})).sort((a,b)=>b.score-a.score);
+    const best=ranked[0]; if(!best||best.score<60)return false;
+    const rows=setup.contracts.filter(x=>norm(x.supplier)===norm(best.name));
+    const cinemas=[...new Set(rows.map(x=>x.cinema))],works=[...new Set(rows.map(x=>x.workType))];
+    [...document.getElementById("cinemaSelect").options].forEach(o=>{const c=setup.cinemas.find(x=>x.id===o.value);o.selected=!!c&&cinemas.some(n=>keyCinema(c.dbName||c.name)===keyCinema(n))});
+    [...document.getElementById("workSelect").options].forEach(o=>{const w=setup.workTypes.find(x=>x.id===o.value);o.selected=!!w&&works.some(n=>norm(w.name)===norm(n))});
+    const total=rows.reduce((a,x)=>a+(Number(x.amount)||0),0);
+    const freqs=[...new Set(rows.map(x=>x.frequency).filter(Boolean))];
+    document.getElementById("documentCompanyName").value=source;
+    document.getElementById("databaseCompanyName").value=best.name;
+    document.getElementById("companyName").value=best.name;
+    document.getElementById("supplier").value=best.name;
+    document.getElementById("frequency").value=freqs.join(" / ");
+    document.getElementById("contractAmount").value=total.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});
+    if(typeof updateCinemaSummary==='function')updateCinemaSummary();
+    if(typeof updateWorkSummary==='function')updateWorkSummary();
+    const box=document.getElementById("dbMatchSummary");box.hidden=false;
+    box.innerHTML=`<b>Recupero DB riuscito: ${best.score}%</b><br>Documenti: ${source}<br>DB: ${best.name}<br>${cinemas.length} cinema, ${works.length} tipologie, ${rows.length} righe, totale € ${total.toLocaleString("it-IT",{minimumFractionDigits:2})}`;
+    const status=document.getElementById("status");status.className="status ok";status.textContent=`DB recuperato: ${cinemas.length} cinema, ${works.length} tipologie, ${rows.length} abbinamenti.`;
+    return true;
+  }
+  window.applyAutomaticDbMatch=applyAutomaticDbMatch;
+  refreshLists();
+  const original=DocumentParser.extract;
+  DocumentParser.extract=async function(...args){const result=await original.apply(this,args);setTimeout(applyAutomaticDbMatch,50);return result};
+  document.getElementById("extractBtn").addEventListener("click",()=>setTimeout(applyAutomaticDbMatch,800));
+})();
+</script>
+
 </body>
 </html>
