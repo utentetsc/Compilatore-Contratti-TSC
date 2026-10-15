@@ -73,6 +73,13 @@
       <div class="grid two">
         <article class="card">
           <h2>Cinema</h2>
+          <div class="import-panel">
+            <label class="button secondary">Importa cinema da Excel
+              <input id="cinemaExcelFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+            </label>
+            <small>Le righe con lo stesso ID vengono aggiornate, le altre aggiunte.</small>
+            <div id="cinemaImportStatus" class="status" aria-live="polite"></div>
+          </div>
           <form id="cinemaForm" class="inline-form">
             <input name="name" placeholder="Nome cinema" required>
             <input name="address" placeholder="Indirizzo">
@@ -105,7 +112,9 @@
   <footer>Generatore Contratti · versione iniziale</footer>
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.8/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.62.0/build/docxtemplater.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/js/storage.js"></script>
+  <script src="assets/js/excel-importer.js"></script>
   <script src="assets/js/parser.js"></script>
   <script src="assets/js/document-generator.js"></script>
   <script src="assets/js/app.js"></script>
