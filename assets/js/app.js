@@ -1,15 +1,22 @@
 let setup = StorageService.load();
-if(!Array.isArray(setup.contracts) || !setup.contracts.length){ setup.contracts=[...DEFAULT_CONTRACT_DATABASE]; setup.workTypes=[...DEFAULT_WORK_TYPES]; }
+const embeddedContracts = Array.isArray(window.DEFAULT_CONTRACT_DATABASE) ? window.DEFAULT_CONTRACT_DATABASE : (typeof DEFAULT_CONTRACT_DATABASE!=="undefined" ? DEFAULT_CONTRACT_DATABASE : []);
+const embeddedWorkTypes = Array.isArray(window.DEFAULT_WORK_TYPES) ? window.DEFAULT_WORK_TYPES : (typeof DEFAULT_WORK_TYPES!=="undefined" ? DEFAULT_WORK_TYPES : []);
+if(!Array.isArray(setup.cinemas)) setup.cinemas=[];
+if(!Array.isArray(setup.contracts) || setup.contracts.length<10) setup.contracts=[...embeddedContracts];
+if(!Array.isArray(setup.workTypes) || setup.workTypes.length<2) setup.workTypes=[...embeddedWorkTypes];
 function cinemaKey(v){return String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/^tsc\s+/,"").replace(/\s*\([a-z]{2}\)\s*$/i,"").replace(/[^a-z0-9]+/g," ").trim()}
 function syncCinemasFromContracts(){
   const names=[...new Set((setup.contracts||[]).map(x=>x.cinema).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"it"));
-  for(const name of names){
-    const existing=setup.cinemas.find(x=>cinemaKey(x.name)===cinemaKey(name));
-    if(existing){existing.dbName=name}else setup.cinemas.push({id:`db-${cinemaKey(name).replace(/ /g,"-")}`,name,address:"",city:"",dbName:name});
+  for(const dbName of names){
+    const existing=setup.cinemas.find(x=>cinemaKey(x.name)===cinemaKey(dbName));
+    if(existing){existing.dbName=dbName;if(!existing.name)existing.name=dbName}
+    else setup.cinemas.push({id:`db-${cinemaKey(dbName).replace(/ /g,"-")}`,name:dbName,address:"",city:"",dbName});
   }
-  setup.cinemas=setup.cinemas.filter((x,i,a)=>a.findIndex(y=>cinemaKey(y.name)===cinemaKey(x.name))===i);
+  setup.cinemas=setup.cinemas.filter((x,i,a)=>x.name&&a.findIndex(y=>cinemaKey(y.name)===cinemaKey(x.name))===i);
+  return names.length;
 }
-syncCinemasFromContracts(); StorageService.save(setup);
+const syncedCinemaCount=syncCinemasFromContracts();
+StorageService.save(setup);
 let masterFile = null;
 let supportFiles = [];
 const $ = id => document.getElementById(id);
@@ -118,3 +125,4 @@ function buildData(){const c=setup.cinemas.find(x=>x.id===$("cinemaSelect").valu
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
 $("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");await DocumentGenerator.generate(masterFile,buildData());showStatus("Contratto generato correttamente.","ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
 $("contractDate").value=new Date().toISOString().slice(0,10);renderSetup();
+showStatus(`Database pronto: ${setup.cinemas.length} cinema, ${setup.workTypes.length} tipologie, ${setup.contracts.length} abbinamenti.`,"ok");

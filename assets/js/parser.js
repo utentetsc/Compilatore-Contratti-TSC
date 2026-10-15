@@ -35,7 +35,13 @@ const DocumentParser = (() => {
       /(?:polizza)\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/.]{3,49})/i,
       /(?:contratto\s+assicurativo)\s*(?:n(?:umero)?[.°º]?|numero)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{3,49})/i
     ]);
-    if(policy && /^(ALLIANZ|GENERALI|UNIPOLSAI|AXA|ZURICH|REALE|VITTORIA|HELVETIA|GROUPAMA|HDI)$/i.test(policy))policy="";
+    // Un numero polizza deve contenere almeno una cifra: parole come "consuntivo" vengono scartate.
+    if(policy && !/\d/.test(policy)) policy="";
+    if(!policy){
+      const context=(text.match(/(?:polizza|contratto assicurativo)[\s\S]{0,180}/i)||[])[0]||"";
+      const tokens=context.match(/\b(?=[A-Z0-9.\/-]{5,50}\b)(?=[A-Z0-9.\/-]*\d)[A-Z0-9]+(?:[.\/-][A-Z0-9]+)+\b|\b(?=[A-Z0-9]{6,30}\b)(?=[A-Z0-9]*\d)[A-Z0-9]{6,30}\b/ig)||[];
+      policy=tokens.find(x=>!/^(202[0-9]|[0-3]?\d[.\/-][01]?\d[.\/-]20\d\d)$/.test(x))||"";
+    }
     add("policyNumber",policy,.94);
     const pe=first(text,[/(?:scadenza|validit[aà]\s+fino\s+al)\s*(?:della\s+polizza)?\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i]);add("policyExpiry",dateISO(pe),.88);
     add("policyLimit",first(text,[/(?:massimale)\s*[:\-]?\s*(?:€|euro)?\s*([0-9. ,]{3,30})/i]),.89);
