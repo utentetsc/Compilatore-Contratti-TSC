@@ -1,5 +1,15 @@
 let setup = StorageService.load();
-if(!Array.isArray(setup.contracts) || !setup.contracts.length){ setup.contracts=[...DEFAULT_CONTRACT_DATABASE]; setup.workTypes=[...DEFAULT_WORK_TYPES]; StorageService.save(setup); }
+if(!Array.isArray(setup.contracts) || !setup.contracts.length){ setup.contracts=[...DEFAULT_CONTRACT_DATABASE]; setup.workTypes=[...DEFAULT_WORK_TYPES]; }
+function cinemaKey(v){return String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/^tsc\s+/,"").replace(/\s*\([a-z]{2}\)\s*$/i,"").replace(/[^a-z0-9]+/g," ").trim()}
+function syncCinemasFromContracts(){
+  const names=[...new Set((setup.contracts||[]).map(x=>x.cinema).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"it"));
+  for(const name of names){
+    const existing=setup.cinemas.find(x=>cinemaKey(x.name)===cinemaKey(name));
+    if(existing){existing.dbName=name}else setup.cinemas.push({id:`db-${cinemaKey(name).replace(/ /g,"-")}`,name,address:"",city:"",dbName:name});
+  }
+  setup.cinemas=setup.cinemas.filter((x,i,a)=>a.findIndex(y=>cinemaKey(y.name)===cinemaKey(x.name))===i);
+}
+syncCinemasFromContracts(); StorageService.save(setup);
 let masterFile = null;
 let supportFiles = [];
 const $ = id => document.getElementById(id);
@@ -55,13 +65,13 @@ function cinemaMatches(dbName,selected){
 function applyContractSuggestion(){
   const cinema=setup.cinemas.find(x=>x.id===$("cinemaSelect").value); const work=setup.workTypes.find(x=>x.id===$("workSelect").value);
   if(!cinema||!work)return;
-  const matches=(setup.contracts||[]).filter(x=>ContractDbImporter.norm(x.workType)===ContractDbImporter.norm(work.name)&&cinemaMatches(x.cinema,cinema.name));
+  const matches=(setup.contracts||[]).filter(x=>ContractDbImporter.norm(x.workType)===ContractDbImporter.norm(work.name)&&(cinema.dbName ? x.cinema===cinema.dbName : cinemaMatches(x.cinema,cinema.name)));
   if(matches.length===1){const x=matches[0];$("supplier").value=x.supplier||"";$("frequency").value=x.frequency||"";$("contractAmount").value=x.amount==null?"":Number(x.amount).toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});showStatus("Dati della lavorazione precompilati dal database.","ok")}
   else if(matches.length>1){showStatus(`Trovati ${matches.length} abbinamenti per cinema e lavorazione. Verifica ditta, frequenza e importo.`,"ok")}
 }
 $("cinemaSelect").addEventListener("change",applyContractSuggestion);
 $("workSelect").addEventListener("change",applyContractSuggestion);
-$("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const status=$("contractDbStatus");try{status.textContent="Importazione in corso...";status.className="status";const contracts=await ContractDbImporter.read(file);setup.contracts=contracts;setup.workTypes=ContractDbImporter.workTypes(contracts);StorageService.save(setup);renderSetup();status.textContent=`Database importato: ${contracts.length} abbinamenti e ${setup.workTypes.length} tipologie.`;status.className="status ok"}catch(err){console.error(err);status.textContent=err.message||"Errore durante l'importazione.";status.className="status error"}finally{e.target.value=""}};
+$("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const status=$("contractDbStatus");try{status.textContent="Importazione in corso...";status.className="status";const contracts=await ContractDbImporter.read(file);setup.contracts=contracts;setup.workTypes=ContractDbImporter.workTypes(contracts);syncCinemasFromContracts();StorageService.save(setup);renderSetup();status.textContent=`Database importato: ${contracts.length} abbinamenti e ${setup.workTypes.length} tipologie.`;status.className="status ok"}catch(err){console.error(err);status.textContent=err.message||"Errore durante l'importazione.";status.className="status error"}finally{e.target.value=""}};
 
 $("extractBtn").onclick=async()=>{
   if(!supportFiles.length){showStatus("Carica prima almeno un documento.","error");return}

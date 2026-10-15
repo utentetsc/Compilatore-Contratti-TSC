@@ -15,19 +15,28 @@ const DocumentParser = (() => {
   function first(text,res){for(const re of res){const m=text.match(re);if(m?.[1])return clean(m[1])}return ""}
   function evidence(field,value,file,confidence){return {field,label:FIELD_LABELS[field]||field,value,source:file.name,confidence}}
   function extractFromText(text,file){
-    const out=[], add=(field,value,confidence=0.82)=>{if(value)out.push(evidence(field,value,file,confidence))};
-    add("companyName",first(text,[/(?:denominazione|ragione sociale|impresa)\s*[:\-]?\s*([^\n]{3,100})/i]),.80);
+    const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence))};
+    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
+    add("companyName",first(text,[new RegExp("(?:denominazione|ragione\\s+sociale)\\s*[:\\-]?\\s*([A-Z0-9À-Ü&'. /-]{3,100}?)"+stop,"i"),/(?:impresa)\s*[:\-]?\s*([A-Z0-9À-Ü&'. /-]{3,80})/i]),.86);
     add("vatNumber",first(text,[/(?:partita\s+iva|p\.?\s*iva)\s*[:\-]?\s*(?:IT\s*)?([0-9]{11})/i]),.96);
     add("fiscalCode",first(text,[/(?:codice\s+fiscale|c\.?f\.?)\s*[:\-]?\s*([A-Z0-9]{11,16})/i]),.94);
     add("rea",first(text,[/(?:numero\s+rea|r\.?e\.?a\.?)\s*[:\-]?\s*([A-Z]{0,2}\s*[-/]?\s*[0-9]{3,10})/i]),.88);
-    add("registeredOffice",first(text,[/(?:sede\s+legale|indirizzo\s+sede)\s*[:\-]?\s*([^\n]{5,140})/i]),.78);
+    add("registeredOffice",first(text,[new RegExp("(?:sede\\s+legale|indirizzo\\s+sede)\\s*[:\\-]?\\s*(.{5,150}?)"+stop,"i")]),.82);
     add("pec",first(text,[/(?:pec|posta elettronica certificata)\s*[:\-]?\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i]),.98);
-    add("legalRepresentative",first(text,[/(?:legale\s+rappresentante|rappresentante\s+legale)\s*[:\-]?\s*([^\n]{3,80})/i]),.78);
-    add("insuranceCompany",first(text,[/(?:compagnia|impresa\s+di\s+assicurazione)\s*[:\-]?\s*([^\n]{3,100})/i]),.72);
-    add("policyNumber",first(text,[/(?:numero\s+)?polizza\s*(?:n\.?|numero)?\s*[:\-]?\s*([A-Z0-9\-/.]{4,40})/i]),.93);
+    add("legalRepresentative",first(text,[new RegExp("(?:legale\\s+rappresentante|rappresentante\\s+legale)\\s*[:\\-]?\\s*(.{3,90}?)"+stop,"i")]),.82);
+
+    // Assicurazione: prima cerca denominazioni vicine a parole assicurative, poi marchi comuni.
+    let insurer=first(text,[/(?:societ[aà]|impresa|compagnia)\s+(?:di\s+)?assicurazione\s*[:\-]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'.-]{2,80}?)(?=\s+(?:polizza|con\s+sede|numero|n\.)|$)/i,/(?:assicuratore|compagnia)\s*[:\-]\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'.-]{2,80}?)(?=\s+(?:polizza|numero|n\.)|$)/i]);
+    if(!insurer){const brands=text.match(/\b(ALLIANZ|GENERALI|UNIPOLSAI|AXA|ZURICH|REALE MUTUA|VITTORIA ASSICURAZIONI|HELVETIA|GROUPAMA|HDI|ITALIANA ASSICURAZIONI)\b/i);insurer=brands?.[1]||""}
+    add("insuranceCompany",insurer,.90);
+    let policy=first(text,[/(?:polizza|contratto)\s*(?:n\.?|numero|num\.)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{3,39})/i,/(?:numero\s+polizza)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{3,39})/i]);
+    if(policy && /^(ALLIANZ|GENERALI|UNIPOLSAI|AXA|ZURICH)$/i.test(policy))policy="";
+    add("policyNumber",policy,.94);
     const pe=first(text,[/(?:scadenza|validit[aà]\s+fino\s+al)\s*(?:della\s+polizza)?\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i]);add("policyExpiry",dateISO(pe),.88);
     add("policyLimit",first(text,[/(?:massimale)\s*[:\-]?\s*(?:€|euro)?\s*([0-9. ,]{3,30})/i]),.89);
-    add("durcProtocol",first(text,[/(?:protocollo|numero\s+protocollo)\s*[:\-]?\s*([A-Z0-9\-/.]{4,50})/i]),.83);
+
+    // DURC: evita di scambiare il nome dell'ente INAIL per il protocollo.
+    add("durcProtocol",first(text,[/(?:numero\s+protocollo|protocollo)\s*[:\-]?\s*((?=[A-Z0-9\-/.]*\d)[A-Z0-9][A-Z0-9\-/.]{4,49})/i,/\b(INPS_[A-Z0-9_\-]{6,50}|INAIL_[A-Z0-9_\-]{6,50})\b/i]),.90);
     const de=first(text,[/(?:scadenza\s+validit[aà]|valido\s+fino\s+al)\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i]);add("durcExpiry",dateISO(de),.87);
     if(/risulta\s+regolare|regolare\s+nei\s+confronti/i.test(text))add("durcStatus","Regolare",.94);
     return out;
