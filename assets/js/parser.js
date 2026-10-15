@@ -29,8 +29,13 @@ const DocumentParser = (() => {
     let insurer=first(text,[/(?:societ[aà]|impresa|compagnia)\s+(?:di\s+)?assicurazione\s*[:\-]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'.-]{2,80}?)(?=\s+(?:polizza|con\s+sede|numero|n\.)|$)/i,/(?:assicuratore|compagnia)\s*[:\-]\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'.-]{2,80}?)(?=\s+(?:polizza|numero|n\.)|$)/i]);
     if(!insurer){const brands=text.match(/\b(ALLIANZ|GENERALI|UNIPOLSAI|AXA|ZURICH|REALE MUTUA|VITTORIA ASSICURAZIONI|HELVETIA|GROUPAMA|HDI|ITALIANA ASSICURAZIONI)\b/i);insurer=brands?.[1]||""}
     add("insuranceCompany",insurer,.90);
-    let policy=first(text,[/(?:polizza|contratto)\s*(?:n\.?|numero|num\.)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{3,39})/i,/(?:numero\s+polizza)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{3,39})/i]);
-    if(policy && /^(ALLIANZ|GENERALI|UNIPOLSAI|AXA|ZURICH)$/i.test(policy))policy="";
+    let policy=first(text,[
+      /(?:n(?:umero)?[.°º\s]*\s*(?:di\s+)?polizza|numero\s+polizza)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{2,49})/i,
+      /(?:polizza)\s*(?:n(?:umero)?[.°º]?|num[.]?)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{2,49})/i,
+      /(?:polizza)\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/.]{3,49})/i,
+      /(?:contratto\s+assicurativo)\s*(?:n(?:umero)?[.°º]?|numero)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{3,49})/i
+    ]);
+    if(policy && /^(ALLIANZ|GENERALI|UNIPOLSAI|AXA|ZURICH|REALE|VITTORIA|HELVETIA|GROUPAMA|HDI)$/i.test(policy))policy="";
     add("policyNumber",policy,.94);
     const pe=first(text,[/(?:scadenza|validit[aà]\s+fino\s+al)\s*(?:della\s+polizza)?\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i]);add("policyExpiry",dateISO(pe),.88);
     add("policyLimit",first(text,[/(?:massimale)\s*[:\-]?\s*(?:€|euro)?\s*([0-9. ,]{3,30})/i]),.89);

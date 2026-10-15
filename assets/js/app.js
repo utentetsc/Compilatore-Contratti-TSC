@@ -27,7 +27,26 @@ function bindDrop(zoneId,inputId,handler){
   zone.addEventListener("drop",ev=>handler([...ev.dataTransfer.files]));
 }
 bindDrop("masterDrop","masterFile",files=>{masterFile=files.find(f=>f.name.toLowerCase().endsWith(".docx"))||null;$("masterName").textContent=masterFile?.name||"Seleziona un file .docx"});
-bindDrop("docsDrop","docsFiles",files=>{supportFiles=files;$("docsCount").textContent=`${files.length} documenti`;$("docsList").innerHTML=files.map(f=>`<li>${esc(f.name)}</li>`).join("")});
+bindDrop("docsDrop","docsFiles",async files=>{
+  supportFiles=files;
+  $("docsCount").textContent=`${files.length} documenti`;
+  $("docsList").innerHTML=files.map(f=>`<li>${esc(f.name)}</li>`).join("");
+  const excelFiles=files.filter(f=>/\.(xlsx|xls|csv)$/i.test(f.name));
+  for(const file of excelFiles){
+    try{
+      const contracts=await ContractDbImporter.read(file);
+      setup.contracts=contracts;
+      setup.workTypes=ContractDbImporter.workTypes(contracts);
+      syncCinemasFromContracts();
+      StorageService.save(setup);
+      renderSetup();
+      showStatus(`DB Contratti caricato: ${contracts.length} abbinamenti, ${setup.workTypes.length} tipologie e cinema sincronizzati.`,"ok");
+    }catch(err){
+      console.error(err);
+      showStatus(`${file.name}: non riconosciuto come DB Contratti. ${err.message||""}`,"error");
+    }
+  }
+});
 function renderSetup(){
   $("cinemaSelect").innerHTML='<option value="">Seleziona...</option>'+setup.cinemas.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
   $("workSelect").innerHTML='<option value="">Seleziona...</option>'+setup.workTypes.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
@@ -76,7 +95,9 @@ $("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)r
 $("extractBtn").onclick=async()=>{
   if(!supportFiles.length){showStatus("Carica prima almeno un documento.","error");return}
   showStatus("Lettura documenti in corso... I file scansionati possono richiedere più tempo.");
-  const result=await DocumentParser.extract(supportFiles,(name,n,total)=>showStatus(`Lettura ${n}/${total}: ${name}`));
+  const documentFiles=supportFiles.filter(f=>!/\.(xlsx|xls|csv)$/i.test(f.name));
+  if(!documentFiles.length){showStatus("Database Excel importato. Aggiungi visura, polizza o DURC per recuperare altri dati.","ok");return}
+  const result=await DocumentParser.extract(documentFiles,(name,n,total)=>showStatus(`Lettura ${n}/${total}: ${name}`));
   Object.entries(result.values).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});
   renderReview(result);
   const found=Object.keys(result.values).length;
