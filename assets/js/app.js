@@ -63,11 +63,26 @@ $("cinemaSelect").addEventListener("change",applyContractSuggestion);
 $("workSelect").addEventListener("change",applyContractSuggestion);
 $("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const status=$("contractDbStatus");try{status.textContent="Importazione in corso...";status.className="status";const contracts=await ContractDbImporter.read(file);setup.contracts=contracts;setup.workTypes=ContractDbImporter.workTypes(contracts);StorageService.save(setup);renderSetup();status.textContent=`Database importato: ${contracts.length} abbinamenti e ${setup.workTypes.length} tipologie.`;status.className="status ok"}catch(err){console.error(err);status.textContent=err.message||"Errore durante l'importazione.";status.className="status error"}finally{e.target.value=""}};
 
-$("extractBtn").onclick=async()=>{const d=await DocumentParser.extract(supportFiles);Object.entries(d).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});showStatus(Object.keys(d).some(k=>d[k])?"Dati trovati e precompilati. Verificali prima di generare.":"Nessun dato riconosciuto. In questa versione il riconoscimento automatico è attivo sui file TXT di prova.","ok")};
+$("extractBtn").onclick=async()=>{
+  if(!supportFiles.length){showStatus("Carica prima almeno un documento.","error");return}
+  showStatus("Lettura documenti in corso... I file scansionati possono richiedere più tempo.");
+  const result=await DocumentParser.extract(supportFiles,(name,n,total)=>showStatus(`Lettura ${n}/${total}: ${name}`));
+  Object.entries(result.values).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});
+  renderReview(result);
+  const found=Object.keys(result.values).length;
+  showStatus(`Recupero completato: ${found} campi trovati, ${result.conflicts.length} conflitti da verificare.`,found?"ok":"error");
+};
+function renderReview(result){
+ const panel=$("reviewPanel"),list=$("reviewList");panel.hidden=false;
+ const rows=result.evidence.map(x=>{const pct=Math.round(x.confidence*100),level=pct>=90?"high":"medium";return `<div class="review-item"><div><b>${esc(x.label)}</b><br><span>${esc(x.value)}</span></div><div class="review-source">Fonte: ${esc(x.source)}</div><div class="confidence ${level}">${pct}%</div></div>`});
+ const conflicts=result.conflicts.map(c=>`<div class="conflict"><b>Conflitto: ${esc(c.label)}</b><br>${c.values.map(v=>`${esc(v.value)} (${esc(v.source)})`).join("<br>")}</div>`);
+ const errors=result.errors.map(e=>`<div class="conflict"><b>${esc(e.source)}</b>: ${esc(e.message)}</div>`);
+ list.innerHTML=[...conflicts,...rows,...errors].join("")||"Nessun dato riconosciuto.";
+}
 function value(id){return $(id).value.trim()}
 function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/${m}/${y}`}
 function buildData(){const c=setup.cinemas.find(x=>x.id===$("cinemaSelect").value)||{};const w=setup.workTypes.find(x=>x.id===$("workSelect").value)||{};return {
-  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),NOME_CINEMA:c.name||"",INDIRIZZO_CINEMA:c.address||"",CITTA_CINEMA:c.city||"",TIPO_LAVORAZIONE:w.name||"",DESCRIZIONE_LAVORAZIONE:w.description||"",DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
+  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:c.name||"",INDIRIZZO_CINEMA:c.address||"",CITTA_CINEMA:c.city||"",TIPO_LAVORAZIONE:w.name||"",DESCRIZIONE_LAVORAZIONE:w.description||"",DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
 $("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");await DocumentGenerator.generate(masterFile,buildData());showStatus("Contratto generato correttamente.","ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};

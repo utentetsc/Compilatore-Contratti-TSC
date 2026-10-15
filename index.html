@@ -32,9 +32,10 @@
         <article class="card">
           <h2>2. Documenti di supporto</h2>
           <label class="drop-zone" id="docsDrop">
-            <input id="docsFiles" type="file" accept=".pdf,.docx,.txt" multiple hidden>
-            <span>Trascina visura, assicurazione e altri documenti</span>
+            <input id="docsFiles" type="file" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png" multiple hidden>
+            <span>Trascina visura, assicurazione, DURC e altri documenti</span>
             <strong id="docsCount">0 documenti</strong>
+            <small>PDF testuali, DOCX, TXT e immagini JPG/PNG</small>
           </label>
           <ul id="docsList" class="file-list"></ul>
         </article>
@@ -61,6 +62,9 @@
           <label>Ditta / fornitore<input id="supplier"></label>
           <label>Frequenza<input id="frequency"></label>
           <label>Importo contrattuale<input id="contractAmount" inputmode="decimal"></label>
+          <label>Protocollo DURC<input id="durcProtocol"></label>
+          <label>Scadenza DURC<input id="durcExpiry" type="date"></label>
+          <label>Esito DURC<input id="durcStatus"></label>
           <label>Data inizio<input id="startDate" type="date"></label>
           <label>Data fine<input id="endDate" type="date"></label>
         </div>
@@ -69,6 +73,11 @@
           <button id="generateBtn" class="primary">Genera contratto Word</button>
         </div>
         <div id="status" class="status" aria-live="polite"></div>
+        <section id="reviewPanel" class="review-panel" hidden>
+          <h3>Verifica dati recuperati</h3>
+          <p>I valori vengono proposti automaticamente. Controllali prima di generare il contratto.</p>
+          <div id="reviewList"></div>
+        </section>
       </article>
     </section>
 
@@ -123,6 +132,9 @@
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.8/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.62.0/build/docxtemplater.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="assets/js/contracts-database.js"></script>
   <script src="assets/js/storage.js"></script>
   <script src="assets/js/contract-db-importer.js"></script>
