@@ -27,3 +27,8 @@
 - `{NUMERO_POLIZZA}`
 - `{SCADENZA_POLIZZA}`
 - `{MASSIMALE}`
+
+## Dati dal database contratti
+- `{DITTA}`
+- `{FREQUENZA}`
+- `{IMPORTO_CONTRATTO}`

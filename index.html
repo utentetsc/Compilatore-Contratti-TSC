@@ -58,6 +58,9 @@
           <label>Numero polizza<input id="policyNumber"></label>
           <label>Scadenza polizza<input id="policyExpiry" type="date"></label>
           <label>Massimale<input id="policyLimit"></label>
+          <label>Ditta / fornitore<input id="supplier"></label>
+          <label>Frequenza<input id="frequency"></label>
+          <label>Importo contrattuale<input id="contractAmount" inputmode="decimal"></label>
           <label>Data inizio<input id="startDate" type="date"></label>
           <label>Data fine<input id="endDate" type="date"></label>
         </div>
@@ -90,6 +93,13 @@
         </article>
         <article class="card">
           <h2>Tipologie di lavorazione</h2>
+          <div class="import-panel">
+            <label class="button secondary">Importa DB contratti da Excel
+              <input id="contractDbFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+            </label>
+            <small>Importa lavorazioni, cinema, ditte, frequenze e importi.</small>
+            <div id="contractDbStatus" class="status" aria-live="polite"></div>
+          </div>
           <form id="workForm" class="inline-form">
             <input name="name" placeholder="Nome lavorazione" required>
             <textarea name="description" placeholder="Descrizione"></textarea>
@@ -113,7 +123,9 @@
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.8/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.62.0/build/docxtemplater.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="assets/js/contracts-database.js"></script>
   <script src="assets/js/storage.js"></script>
+  <script src="assets/js/contract-db-importer.js"></script>
   <script src="assets/js/excel-importer.js"></script>
   <script src="assets/js/parser.js"></script>
   <script src="assets/js/document-generator.js"></script>
