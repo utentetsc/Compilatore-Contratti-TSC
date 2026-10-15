@@ -41,3 +41,6 @@
 ## Cinema multipli
 - `{NOMI_CINEMA}` elenco dei cinema selezionati
 - `{INDIRIZZI_CINEMA}` elenco degli indirizzi disponibili
+
+## Tipologie multiple
+- `{TIPOLOGIE_LAVORAZIONE}` elenco completo delle lavorazioni recuperate dal DB

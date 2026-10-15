@@ -57,7 +57,7 @@ bindDrop("docsDrop","docsFiles",async files=>{
 });
 function renderSetup(){
   $("cinemaSelect").innerHTML=setup.cinemas.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
-  $("workSelect").innerHTML='<option value="">Seleziona...</option>'+setup.workTypes.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
+  $("workSelect").innerHTML=setup.workTypes.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
   $("cinemaList").innerHTML=setup.cinemas.map(x=>`<div class="row"><div class="details"><b>${esc(x.name)}</b><br><small>${esc([x.address,x.city].filter(Boolean).join(", "))}</small>${x.email?`<br><small>${esc(x.email)}</small>`:""}</div><button class="danger" data-del-cinema="${esc(x.id)}">Elimina</button></div>`).join("");
   $("workList").innerHTML=setup.workTypes.map(x=>`<div class="row"><div><b>${esc(x.name)}</b><br><small>${esc(x.description)}</small></div><button class="danger" data-del-work="${esc(x.id)}">Elimina</button></div>`).join("");
 }
@@ -84,6 +84,8 @@ $("exportSetup").onclick=()=>{const b=new Blob([JSON.stringify(setup,null,2)],{t
 $("importSetup").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.cinemas)||!Array.isArray(d.workTypes))throw 0;setup=d;StorageService.save(setup);renderSetup()}catch{alert("File di configurazione non valido")}};
 $("resetSetup").onclick=()=>{setup=StorageService.reset();renderSetup()};
 
+function selectedWorkTypes(){return [...$("workSelect").selectedOptions].map(o=>setup.workTypes.find(x=>x.id===o.value)).filter(Boolean)}
+function updateWorkSummary(){const list=selectedWorkTypes();$("workSelectionSummary").textContent=list.length?`${list.length} tipologie: ${list.map(x=>x.name).join(", ")}`:"Nessuna tipologia selezionata"}
 function selectedCinemas(){return [...$("cinemaSelect").selectedOptions].map(o=>setup.cinemas.find(x=>x.id===o.value)).filter(Boolean)}
 function updateCinemaSummary(){const list=selectedCinemas();$("cinemaSelectionSummary").textContent=list.length?`${list.length} cinema: ${list.map(x=>x.name).join(", ")}`:"Nessun cinema selezionato"}
 function cinemaMatches(dbName,selected){
@@ -92,26 +94,48 @@ function cinemaMatches(dbName,selected){
   return core(a)===core(b) || core(a).includes(core(b)) || core(b).includes(core(a));
 }
 function applyContractSuggestion(){
-  updateCinemaSummary();
-  const cinemas=selectedCinemas();
-  const work=setup.workTypes.find(x=>x.id===$("workSelect").value);
-  if(!cinemas.length||!work)return;
+  updateCinemaSummary(); updateWorkSummary();
+  const cinemas=selectedCinemas(), works=selectedWorkTypes();
+  if(!cinemas.length||!works.length)return;
   const matches=[];
-  for(const cinema of cinemas){
-    const found=(setup.contracts||[]).filter(x=>ContractDbImporter.norm(x.workType)===ContractDbImporter.norm(work.name)&&(cinema.dbName ? x.cinema===cinema.dbName : cinemaMatches(x.cinema,cinema.name)));
-    matches.push(...found);
+  for(const cinema of cinemas)for(const work of works){
+    matches.push(...(setup.contracts||[]).filter(x=>ContractDbImporter.norm(x.workType)===ContractDbImporter.norm(work.name)&&(cinema.dbName ? x.cinema===cinema.dbName : cinemaMatches(x.cinema,cinema.name))));
   }
+  applyDbMatches(matches,cinemas,works,false);
+}
+function normalizeSupplierName(v){
+  return ContractDbImporter.norm(v).replace(/\b(srl|s r l|spa|s p a|snc|sas|societa|impianti|elettroimpianti)\b/g," ").replace(/\s+/g," ").trim();
+}
+function supplierMatches(company,supplier){
+  const a=normalizeSupplierName(company),b=normalizeSupplierName(supplier);
+  return a&&b&&(a===b||a.startsWith(b+" ")||b.startsWith(a+" ")||a.includes(b));
+}
+function applyDbMatches(matches,cinemas,works,automatic){
   const suppliers=[...new Set(matches.map(x=>x.supplier).filter(Boolean))];
   const frequencies=[...new Set(matches.map(x=>x.frequency).filter(Boolean))];
   const amounts=matches.map(x=>Number(x.amount)).filter(Number.isFinite);
-  if(suppliers.length==1){
-    $("supplier").value=suppliers[0];
-    $("companyName").value=suppliers[0];
-  }else if(suppliers.length>1){$("supplier").value=suppliers.join(" / ")}
+  if(suppliers.length===1){$("supplier").value=suppliers[0];$("companyName").value=suppliers[0]}
+  else if(suppliers.length>1)$("supplier").value=suppliers.join(" / ");
   $("frequency").value=frequencies.join(" / ");
   if(amounts.length)$("contractAmount").value=amounts.reduce((a,b)=>a+b,0).toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});
-  if(matches.length)showStatus(`Trovati ${matches.length} abbinamenti per ${cinemas.length} cinema. Dati DB applicati${suppliers.length===1?` alla ditta ${suppliers[0]}`:""}.`,"ok");
-  else showStatus("Nessun abbinamento trovato per i cinema e la lavorazione selezionati.","error");
+  const box=$("dbMatchSummary");box.hidden=!matches.length;
+  if(matches.length){
+    const byWork=works.map(w=>{const rows=matches.filter(x=>ContractDbImporter.norm(x.workType)===ContractDbImporter.norm(w.name));const total=rows.reduce((a,x)=>a+(Number(x.amount)||0),0);return `<li><b>${esc(w.name)}</b>: ${rows.length} cinema, € ${total.toLocaleString("it-IT",{minimumFractionDigits:2})}</li>`}).join("");
+    box.innerHTML=`<b>${automatic?"Recupero automatico":"Selezione DB"}: ${matches.length} righe trovate</b><br>Ditta: ${esc(suppliers.join(" / "))}<ul>${byWork}</ul>`;
+    showStatus(`${automatic?"DB analizzato automaticamente":"Dati DB applicati"}: ${cinemas.length} cinema, ${works.length} tipologie, ${matches.length} abbinamenti.`,"ok");
+  }
+}
+function autoSelectFromCompany(){
+  const company=$("companyName").value.trim()||$("supplier").value.trim();
+  if(!company)return false;
+  const suppliers=[...new Set((setup.contracts||[]).map(x=>x.supplier).filter(Boolean))];
+  const supplier=suppliers.find(x=>supplierMatches(company,x));
+  if(!supplier)return false;
+  const matches=(setup.contracts||[]).filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
+  const cinemaNames=[...new Set(matches.map(x=>x.cinema))],workNames=[...new Set(matches.map(x=>x.workType))];
+  [...$("cinemaSelect").options].forEach(o=>{const c=setup.cinemas.find(x=>x.id===o.value);o.selected=!!c&&cinemaNames.some(n=>cinemaKey(n)===cinemaKey(c.dbName||c.name))});
+  [...$("workSelect").options].forEach(o=>{const w=setup.workTypes.find(x=>x.id===o.value);o.selected=!!w&&workNames.some(n=>ContractDbImporter.norm(n)===ContractDbImporter.norm(w.name))});
+  const cinemas=selectedCinemas(),works=selectedWorkTypes();updateCinemaSummary();updateWorkSummary();applyDbMatches(matches,cinemas,works,true);return true;
 }
 $("cinemaSelect").addEventListener("change",applyContractSuggestion);
 $("workSelect").addEventListener("change",applyContractSuggestion);
@@ -124,9 +148,10 @@ $("extractBtn").onclick=async()=>{
   if(!documentFiles.length){showStatus("Database Excel importato. Aggiungi visura, polizza o DURC per recuperare altri dati.","ok");return}
   const result=await DocumentParser.extract(documentFiles,(name,n,total)=>showStatus(`Lettura ${n}/${total}: ${name}`));
   Object.entries(result.values).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});
+  const dbAutoMatched=autoSelectFromCompany();
   renderReview(result);
   const found=Object.keys(result.values).length;
-  showStatus(`Recupero completato: ${found} campi trovati, ${result.conflicts.length} conflitti da verificare.`,found?"ok":"error");
+  if(!dbAutoMatched)showStatus(`Recupero completato: ${found} campi trovati, ${result.conflicts.length} conflitti da verificare. Nessuna ditta DB riconosciuta automaticamente.`,found?"ok":"error");
 };
 function renderReview(result){
  const panel=$("reviewPanel"),list=$("reviewList");panel.hidden=false;
@@ -137,8 +162,8 @@ function renderReview(result){
 }
 function value(id){return $(id).value.trim()}
 function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/${m}/${y}`}
-function buildData(){const selected=selectedCinemas();const c=selected[0]||{};const w=setup.workTypes.find(x=>x.id===$("workSelect").value)||{};return {
-  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:w.name||"",DESCRIZIONE_LAVORAZIONE:w.description||"",DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
+function buildData(){const selected=selectedCinemas();const works=selectedWorkTypes();const c=selected[0]||{};const w=works[0]||{};return {
+  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
 $("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");await DocumentGenerator.generate(masterFile,buildData());showStatus("Contratto generato correttamente.","ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
