@@ -37,3 +37,7 @@
 - `{PROTOCOLLO_DURC}`
 - `{SCADENZA_DURC}`
 - `{ESITO_DURC}`
+
+## Cinema multipli
+- `{NOMI_CINEMA}` elenco dei cinema selezionati
+- `{INDIRIZZI_CINEMA}` elenco degli indirizzi disponibili
