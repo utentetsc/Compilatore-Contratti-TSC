@@ -18,7 +18,7 @@
 
   <main class="container">
     <section id="generator" class="view active">
-      <div class="notice">I file selezionati restano nel browser. La versione 0.2.6 non li invia a server.</div>
+      <div class="notice">I file selezionati restano nel browser. La versione 0.2.8 non li invia a server.</div>
       <div class="grid two">
         <article class="card">
           <h2>1. Contratto master</h2>
@@ -46,10 +46,13 @@
         <div class="form-grid">
           <label class="cinema-field">Cinema <small>Puoi selezionare più cinema</small><select id="cinemaSelect" multiple size="5"></select><span id="cinemaSelectionSummary" class="selection-summary">Nessun cinema selezionato</span></label>
           <div id="dbMatchSummary" class="db-match-summary span-2" hidden></div>
+          <div id="supplierMatchPanel" class="supplier-match-panel span-2" hidden></div>
           <label class="work-field">Tipologie di lavorazione <small>Selezionate automaticamente dal DB</small><select id="workSelect" multiple size="5"></select><span id="workSelectionSummary" class="selection-summary">Nessuna tipologia selezionata</span></label>
           <label>Numero contratto<input id="contractNumber" placeholder="CTR-2026-001"></label>
           <label>Data contratto<input id="contractDate" type="date"></label>
-          <label>Ragione sociale<input id="companyName"></label>
+          <label>Ragione sociale definitiva<input id="companyName"></label>
+          <label>Denominazione rilevata nei documenti<input id="documentCompanyName" readonly></label>
+          <label>Denominazione associata nel DB<input id="databaseCompanyName" readonly></label>
           <label>Partita IVA<input id="vatNumber"></label>
           <label>Codice fiscale<input id="fiscalCode"></label>
           <label>REA<input id="rea"></label>
@@ -129,18 +132,18 @@
     </section>
   </main>
 
-  <footer>Generatore Contratti · versione 0.2.6</footer>
+  <footer>Generatore Contratti · versione 0.2.8</footer>
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.8/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.62.0/build/docxtemplater.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="assets/js/storage.js?v=0.2.6"></script>
-  <script src="assets/js/contract-db-importer.js?v=0.2.6"></script>
-  <script src="assets/js/excel-importer.js?v=0.2.6"></script>
-  <script src="assets/js/parser.js?v=0.2.6"></script>
-  <script src="assets/js/document-generator.js?v=0.2.6"></script>
-  <script src="assets/js/app.js?v=0.2.6"></script>
+  <script src="assets/js/storage.js?v=0.2.8"></script>
+  <script src="assets/js/contract-db-importer.js?v=0.2.8"></script>
+  <script src="assets/js/excel-importer.js?v=0.2.8"></script>
+  <script src="assets/js/parser.js?v=0.2.8"></script>
+  <script src="assets/js/document-generator.js?v=0.2.8"></script>
+  <script src="assets/js/app.js?v=0.2.8"></script>
 </body>
 </html>

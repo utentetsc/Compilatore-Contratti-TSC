@@ -44,3 +44,7 @@
 
 ## Tipologie multiple
 - `{TIPOLOGIE_LAVORAZIONE}` elenco completo delle lavorazioni recuperate dal DB
+
+## Confronto denominazioni
+- `{DENOMINAZIONE_DOCUMENTI}` valore letto nei documenti
+- `{DENOMINAZIONE_DB}` valore associato nel database
