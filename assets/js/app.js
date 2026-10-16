@@ -395,7 +395,10 @@ const StrictYellowWordGenerator=(()=>{
       CITTA_FIRMA:city(data.SEDE_LEGALE), RAGIONE_SOCIALE:company, LEGALE_RAPPRESENTANTE:clean(data.LEGALE_RAPPRESENTANTE)
     };
   }
-  function pText(p){return [...p.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("")}
+  function elementsByLocalName(root,name){
+    return [...root.getElementsByTagName("*")].filter(node=>node.localName===name||node.nodeName===`w:${name}`);
+  }
+  function pText(p){return elementsByLocalName(p,"t").map(t=>t.textContent||"").join("")}
   function isYellowRun(run){
     if(!run)return false;
     // Browser diversi espongono gli attributi OOXML con modalità differenti.
@@ -407,7 +410,7 @@ const StrictYellowWordGenerator=(()=>{
     return ["yellow","7"].includes(String(value||"").toLowerCase());
   }
   function markerIsYellow(p,start,end){
-    const ts=[...p.getElementsByTagNameNS(W,"t")];let pos=0,covered=false,yellow=false;
+    const ts=elementsByLocalName(p,"t");let pos=0,covered=false,yellow=false;
     for(const t of ts){
       const a=pos,b=pos+(t.textContent||"").length;pos=b;
       if(end<=a||start>=b)continue;
@@ -418,28 +421,31 @@ const StrictYellowWordGenerator=(()=>{
     }
     if(covered&&yellow)return true;
     // Ultimo controllo: evidenziazione applicata al paragrafo o a un run contenente il marcatore.
-    return covered&&[...p.getElementsByTagNameNS(W,"r")].some(isYellowRun);
+    return covered&&elementsByLocalName(p,"r").some(isYellowRun);
   }
   function setRun(run,value){
     [...run.childNodes].filter(n=>n.namespaceURI===W&&["t","br","tab"].includes(n.localName)).forEach(n=>run.removeChild(n));
     String(value).split("\n").forEach((part,i)=>{if(i)run.appendChild(run.ownerDocument.createElementNS(W,"w:br"));const t=run.ownerDocument.createElementNS(W,"w:t");t.setAttributeNS(XML,"xml:space","preserve");t.textContent=part;run.appendChild(t)});
   }
-  function replace(p,start,end,value){const ts=[...p.getElementsByTagNameNS(W,"t")];let pos=0,first=null;for(const t of ts){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;if(!first)first=t.parentNode;const l=Math.max(0,start-a),r=Math.min((t.textContent||"").length,end-a);t.textContent=(t.textContent||"").slice(0,l)+(t.textContent||"").slice(r)}if(first)setRun(first,value)}
+  function replace(p,start,end,value){const ts=elementsByLocalName(p,"t");let pos=0,first=null;for(const t of ts){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;if(!first)first=t.parentNode;const l=Math.max(0,start-a),r=Math.min((t.textContent||"").length,end-a);t.textContent=(t.textContent||"").slice(0,l)+(t.textContent||"").slice(r)}if(first)setRun(first,value)}
   function process(xml,map,report){
+    report.rawMarkers=(report.rawMarkers||0)+((xml.match(/\{\{[A-Z0-9_]+\}\}/g)||[]).length);
     const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("XML Word non leggibile.");
-    for(const p of [...doc.getElementsByTagNameNS(W,"p")]){
-      const text=pText(p),matches=[...text.matchAll(/\{\{([A-Z0-9_]+)\}\}/g)];
+    const paragraphs=elementsByLocalName(doc,"p");
+    report.paragraphs=(report.paragraphs||0)+paragraphs.length;
+    for(const p of paragraphs){
+      const text=pText(p),matches=[...text.matchAll(/\{\{\s*([A-Z0-9_]+)\s*\}\}/g)];
       for(const m of matches.reverse()){
         const key=normKey(m[1]),valid=Object.prototype.hasOwnProperty.call(map,key),yellow=markerIsYellow(p,m.index,m.index+m[0].length);
         if(!valid){report.unknown.push(key);continue} if(!yellow){report.notYellow.push(key);continue}
         if(!clean(map[key])){report.noData.push(key);continue} replace(p,m.index,m.index+m[0].length,map[key]);report.replaced.push(key);
       }
-      const yellowRuns=[...p.getElementsByTagNameNS(W,"r")].filter(isYellowRun);for(const r of yellowRuns){const rt=[...r.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("");if(rt&& !/\{\{[A-Z0-9_]+\}\}/.test(rt)&&text.includes("{{"))report.yellowWithoutMarker.push(rt.slice(0,60))}
+      const yellowRuns=elementsByLocalName(p,"r").filter(isYellowRun);for(const r of yellowRuns){const rt=[...r.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("");if(rt&& !/\{\{[A-Z0-9_]+\}\}/.test(rt)&&text.includes("{{"))report.yellowWithoutMarker.push(rt.slice(0,60))}
     }
     return new XMLSerializer().serializeToString(doc);
   }
   async function generate(file,data){
-    if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[]};
+    if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[],rawMarkers:0,paragraphs:0};
     const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));
     if(!paths.length)throw new Error("Il file caricato non contiene la struttura interna di un documento Word DOCX.");
     for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,process(xml,map,report))}
@@ -448,7 +454,9 @@ const StrictYellowWordGenerator=(()=>{
       if(report.notYellow.length)details.push(`${report.notYellow.length} marcatori trovati ma non riconosciuti come gialli`);
       if(report.unknown.length)details.push(`${report.unknown.length} marcatori sconosciuti`);
       if(report.noData.length)details.push(`${report.noData.length} marcatori senza dati`);
-      throw new Error(`Nessun marcatore compilabile. ${details.join("; ")||"Il file caricato non contiene marcatori nominativi {{...}}"}.`);
+      if(report.rawMarkers)details.push(`${report.rawMarkers} marcatori presenti nell'XML ma non letti nei paragrafi`);
+      details.push(`${report.paragraphs} paragrafi analizzati`);
+      throw new Error(`Nessun marcatore compilabile. ${details.join("; ")}.`);
     }
     const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;
     if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}
