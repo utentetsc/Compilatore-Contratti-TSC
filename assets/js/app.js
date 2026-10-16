@@ -440,7 +440,9 @@ const StrictYellowWordGenerator=(()=>{
   }
   async function generate(file,data){
     if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[]};
-    const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,process(xml,map,report))}
+    const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));
+    if(!paths.length)throw new Error("Il file caricato non contiene la struttura interna di un documento Word DOCX.");
+    for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,process(xml,map,report))}
     if(!report.replaced.length){
       const details=[];
       if(report.notYellow.length)details.push(`${report.notYellow.length} marcatori trovati ma non riconosciuti come gialli`);
