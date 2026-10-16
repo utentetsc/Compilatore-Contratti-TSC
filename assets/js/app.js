@@ -191,6 +191,34 @@ function cinemaMatches(dbName,selected){
   const core=x=>x.replace(/\b[a-z]{2}\b$/," ").replace(/\s+/g," ").trim();
   return core(a)===core(b) || core(a).includes(core(b)) || core(b).includes(core(a));
 }
+function applyDbMatches(matches,cinemas,works,fromSupplier){
+  const unique=[];
+  const seen=new Set();
+  for(const row of (matches||[])){
+    const key=[row.workType,row.cinema,row.supplier,row.frequency,row.amount].map(v=>String(v??"")).join("|");
+    if(!seen.has(key)){seen.add(key);unique.push(row)}
+  }
+  const frequencies=[...new Set(unique.map(x=>String(x.frequency||"").trim()).filter(Boolean))];
+  const amounts=unique.map(x=>Number(x.amount)).filter(Number.isFinite);
+  $("frequency").value=frequencies.join(" / ");
+  $("contractAmount").value=amounts.length ? amounts.reduce((a,b)=>a+b,0).toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2}) : "";
+  if(fromSupplier&&unique.length){
+    const supplier=unique[0].supplier||"";
+    $("databaseCompanyName").value=supplier;
+    $("companyName").value=supplier;
+    $("supplier").value=supplier;
+  }
+  const box=$("dbMatchSummary");
+  if(box){
+    if(!unique.length){
+      box.innerHTML='<div class="match-ambiguous">Nessun abbinamento trovato nel DB per la selezione corrente.</div>';
+    }else{
+      const cinemaCount=new Set(unique.map(x=>x.cinema)).size;
+      const workCount=new Set(unique.map(x=>x.workType)).size;
+      box.innerHTML=`<div class="match-exact">DB applicato: ${unique.length} righe, ${cinemaCount} cinema, ${workCount} tipologie.</div>`;
+    }
+  }
+}
 function applyContractSuggestion(){
   updateCinemaSummary(); updateWorkSummary();
   const cinemas=selectedCinemas(), works=selectedWorkTypes();
