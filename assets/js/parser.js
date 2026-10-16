@@ -13,10 +13,41 @@ const DocumentParser = (() => {
   async function imageText(file){if(!window.Tesseract)throw new Error("Libreria OCR non disponibile");return (await Tesseract.recognize(file,"ita")).data.text}
   async function fileText(file){const n=file.name.toLowerCase();if(n.endsWith(".txt"))return file.text();if(n.endsWith(".pdf"))return pdfText(file);if(n.endsWith(".docx"))return docxText(file);if(/\.(png|jpe?g)$/.test(n))return imageText(file);return ""}
   function first(text,res){for(const re of res){const m=text.match(re);if(m?.[1])return clean(m[1])}return ""}
-  function evidence(field,value,file,confidence){return {field,label:FIELD_LABELS[field]||field,value,source:file.name,confidence}}
+  function documentType(text,file){
+    const hay=`${file?.name||""} ${String(text||"").slice(0,5000)}`.toLowerCase();
+    if(/visura|camera di commercio|registro imprese|rea\b|cciaa/.test(hay))return "visura";
+    if(/duvri|ditta aggiudicataria|appaltatore\s*-\s*esecutori|anagrafica aziendale/.test(hay))return "duvri";
+    if(/documento unico di regolarit|durc|inps_|inail_/.test(hay))return "durc";
+    if(/polizza|assicurazione|assicurativa|massimale/.test(hay))return "polizza";
+    return "altro";
+  }
+  function titleWords(value){
+    const keepUpper=new Set(["ABC","IVA","REA","INPS","INAIL","DURC","PEC"]), companyForms=new Map([["SRL","Srl"],["SPA","Spa"],["SNC","Snc"],["SAS","Sas"],["SAPA","Sapa"]]);
+    return clean(value).split(/(\s+|-|\/)/).map(token=>{
+      const u=token.toLocaleUpperCase("it-IT");
+      if(keepUpper.has(u))return u;if(companyForms.has(u))return companyForms.get(u);
+      if(/^\d|^[A-Z]{2}$/.test(token))return token;
+      return token.toLocaleLowerCase("it-IT").replace(/^[a-zà-ÿ]/,c=>c.toLocaleUpperCase("it-IT"));
+    }).join("");
+  }
+  function normalizeAddress(value){
+    let v=clean(value).replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"").replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2").replace(/\bint\.?\s*(\d+)/i,"int. $1");
+    v=v.replace(/\s*,\s*/g,", ").replace(/\s{2,}/g," ").replace(/[•]+/g,"").replace(/[.,;]+$/g,"");
+    return titleWords(v).replace(/\bInt\.\s*/g,"int. ");
+  }
+  function normalizeField(field,value){
+    value=clean(value);
+    if(field==="companyName")return titleWords(value);
+    if(field==="registeredOffice")return normalizeAddress(value);
+    if(field==="legalRepresentative")return titleWords(value.replace(/^sig\.?\s*/i,"").replace(/[•]+/g,""));
+    if(field==="email"||field==="pec")return value.toLocaleLowerCase("it-IT");
+    if(field==="rea")return value.toLocaleUpperCase("it-IT").replace(/\s*-\s*/g,"-");
+    return value;
+  }
+  function evidence(field,value,file,confidence,sourceType){return {field,label:FIELD_LABELS[field]||field,value:normalizeField(field,value),source:file.name,sourceType,confidence}}
   function extractFromText(text,file){
-    const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence))};
-    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
+    const sourceType=documentType(text,file);
+    const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
     add("companyName",first(text,[new RegExp("(?:denominazione|ragione\\s+sociale)\\s*[:\\-]?\\s*([A-Z0-9À-Ü&'. /-]{3,100}?)"+stop,"i"),/(?:impresa)\s*[:\-]?\s*([A-Z0-9À-Ü&'. /-]{3,80})/i]),.86);
     add("vatNumber",first(text,[/(?:partita\s+iva|p\.?\s*iva)\s*[:\-]?\s*(?:IT\s*)?([0-9]{11})/i]),.96);
     add("fiscalCode",first(text,[/(?:codice\s+fiscale|c\.?f\.?)\s*[:\-]?\s*([A-Z0-9]{11,16})/i]),.94);
@@ -61,6 +92,29 @@ const DocumentParser = (() => {
     return out;
   }
   async function extract(files,onProgress){const all=[];for(let i=0;i<files.length;i++){const f=files[i];onProgress?.(f.name,i+1,files.length);try{const text=await fileText(f);all.push(...extractFromText(text,f))}catch(err){all.push({error:true,source:f.name,message:err.message})}}return merge(all)}
-  function merge(items){const chosen={},conflicts=[];for(const x of items.filter(x=>!x.error)){if(!chosen[x.field])chosen[x.field]=x;else if(chosen[x.field].value!==x.value){conflicts.push({field:x.field,label:x.label,values:[chosen[x.field],x]});if(x.confidence>chosen[x.field].confidence)chosen[x.field]=x}}return {values:Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,v.value])),evidence:Object.values(chosen),conflicts,errors:items.filter(x=>x.error)}}
+  function sourcePriority(field,type){
+    const rules={
+      companyName:{visura:500,duvri:300,altro:100,polizza:50,durc:50},
+      registeredOffice:{visura:500,duvri:300,altro:100,polizza:50,durc:50},
+      legalRepresentative:{visura:500,duvri:350,altro:100,polizza:40,durc:40},
+      vatNumber:{visura:500,duvri:300,durc:150,altro:100},fiscalCode:{visura:500,duvri:300,durc:150,altro:100},rea:{visura:500,duvri:250,altro:100},pec:{visura:500,duvri:350,altro:100},
+      phone:{duvri:500,visura:250,altro:100},email:{duvri:500,visura:250,altro:100},inpsPosition:{duvri:500,durc:400,visura:300,altro:100},inailPosition:{duvri:500,durc:400,visura:300,altro:100},
+      insuranceCompany:{polizza:500,duvri:250,altro:100},policyNumber:{polizza:500,altro:100},policyExpiry:{polizza:500,altro:100},policyLimit:{polizza:500,altro:100},
+      durcProtocol:{durc:500,altro:100},durcExpiry:{durc:500,altro:100},durcStatus:{durc:500,altro:100}
+    };
+    return rules[field]?.[type]??100;
+  }
+  function merge(items){
+    const chosen={},conflicts=[];
+    for(const x of items.filter(x=>!x.error)){
+      const current=chosen[x.field];
+      if(!current){chosen[x.field]=x;continue}
+      if(current.value===x.value)continue;
+      conflicts.push({field:x.field,label:x.label,values:[current,x],preferredSource:(sourcePriority(x.field,x.sourceType)>sourcePriority(current.field,current.sourceType)?x:current).source});
+      const rankX=sourcePriority(x.field,x.sourceType),rankCurrent=sourcePriority(current.field,current.sourceType);
+      if(rankX>rankCurrent||(rankX===rankCurrent&&x.confidence>current.confidence))chosen[x.field]=x;
+    }
+    return {values:Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,normalizeField(k,v.value)])),evidence:Object.values(chosen),conflicts,errors:items.filter(x=>x.error)};
+  }
   return {extract,FIELD_LABELS};
 })();

@@ -47,3 +47,11 @@ Il master incluso nella cartella `templates` contiene 17 marcatori nominativi re
 
 ### Versione 0.4.1 Aree Gialle
 Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicurezza predefinito; recapiti e firma.
+
+
+### Versione 0.4.2 - Priorità fonti parser
+- ragione sociale, sede legale, P. IVA, C.F., REA, PEC e legale rappresentante: priorità visura camerale;
+- telefono, e-mail, INPS e INAIL: priorità DUVRI;
+- polizza: priorità documento assicurativo;
+- DURC: priorità documento DURC;
+- normalizzazione di nomi e indirizzi con iniziali maiuscole, mantenendo sigle e codici.
