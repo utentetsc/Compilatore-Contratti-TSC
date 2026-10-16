@@ -413,29 +413,109 @@ const LayoutPreservingWordGenerator=(()=>{
     const aliases={DITTA:"RAGIONE_SOCIALE",APPALTATORE:"RAGIONE_SOCIALE",NOMI_CINEMA:"NOMI_CINEMA",CINEMA:"NOMI_CINEMA",LAVORAZIONI:"TIPOLOGIE_LAVORAZIONE",OGGETTO:"TIPOLOGIE_LAVORAZIONE",IMPORTO:"IMPORTO_CONTRATTO",POLIZZA:"NUMERO_POLIZZA",RAPPRESENTANTE:"LEGALE_RAPPRESENTANTE"};
     return clean(data[k]??data[aliases[k]||""]??"");
   }
-  function contextualValue(index,old,data){
-    const works=clean(data.TIPOLOGIE_LAVORAZIONE);const company=clean(data.RAGIONE_SOCIALE||data.DENOMINAZIONE_DB||data.DITTA);
-    const map=[
-      works.toUpperCase(), clean(data.DATA_CONTRATTO),
-      company?`${company}, con sede legale in ${clean(data.SEDE_LEGALE)}, P. IVA ${clean(data.PARTITA_IVA)} e C.F. ${clean(data.CODICE_FISCALE)}, R.E.A. n. ${clean(data.REA)}, in persona di ${clean(data.LEGALE_RAPPRESENTANTE)},`:"",
-      works?`della conduzione e manutenzione di ${works}`:"", "",
-      works?works.split(/,\s*/).map((x,i)=>`${String.fromCharCode(97+i)}) ${x};`).join("\\n"):"",
-      [clean(data.COMPAGNIA_ASSICURATIVA),clean(data.NUMERO_POLIZZA)&&`polizza assicurativa n° ${clean(data.NUMERO_POLIZZA)}`].filter(Boolean).join("\\n"),
-      clean(data.MASSIMALE)&&`${money(data.MASSIMALE)}`, clean(data.IMPORTO_CONTRATTO)&&`Euro ${money(data.IMPORTO_CONTRATTO)}`, "", "",
-      duration(data.DATA_INIZIO,data.DATA_FINE), clean(data.DATA_INIZIO),
-      company?[company,clean(data.SEDE_LEGALE),clean(data.EMAIL)&&`E-mail: ${clean(data.EMAIL)}`,clean(data.PEC)&&`PEC: ${clean(data.PEC)}`,clean(data.TELEFONO)&&`Tel.: ${clean(data.TELEFONO)}`].filter(Boolean).join("\\n"):"",
-      cityFromAddress(data.SEDE_LEGALE),company,clean(data.LEGALE_RAPPRESENTANTE)
-    ];
-    return clean(map[index])?map[index]:old;
+  function contextualValue(index,old,data,paragraph=""){
+    const original=clean(old), oldNorm=norm(original), context=norm(paragraph);
+    const works=clean(data.TIPOLOGIE_LAVORAZIONE);
+    const workItems=works.split(/,\s*/).map(clean).filter(Boolean);
+    const company=clean(data.RAGIONE_SOCIALE||data.DENOMINAZIONE_DB||data.DITTA);
+    const workSentence=works?`della conduzione e manutenzione di ${works}`:"";
+    const workList=workItems.length?workItems.map((x,i)=>`${String.fromCharCode(97+i)}) ${x};`).join("\n"):"";
+
+    // Marcatori finali del master: recapiti, luogo e firme.
+    // Sono gestiti prima delle regole sugli impianti per evitare che un nome aziendale
+    // contenente la parola "Impianti" venga scambiato per una tipologia di lavorazione.
+    if(index===13&&company){
+      return [company,clean(data.SEDE_LEGALE),clean(data.EMAIL)&&`E-mail: ${clean(data.EMAIL)}`,clean(data.PEC)&&`PEC: ${clean(data.PEC)}`,clean(data.TELEFONO)&&`Tel.: ${clean(data.TELEFONO)}`,clean(data.REPERIBILITA)&&`Reperibilità: ${clean(data.REPERIBILITA)}`].filter(Boolean).join("\n");
+    }
+    if(index===14)return cityFromAddress(data.SEDE_LEGALE)||original;
+    if(index===15)return company||original;
+    if(index===16)return clean(data.LEGALE_RAPPRESENTANTE)||original;
+
+    // Riconoscimento semantico: non dipende dalla pagina o dall'ordine dei marcatori.
+    if(/impiant|manutenz|condizion|elettric|sicurezza|idrico|tvcc|antintrus|rilevazione fumi/.test(oldNorm)){
+      if(/[a-e]\)|;/.test(original)||original.includes("\n")) return workList||original;
+      if(/conduzione|manutenzione/.test(oldNorm)) return workSentence||original;
+      if(/contratto di appalto|impianti/.test(context)) return works.toUpperCase()||original;
+    }
+    if(/polizza|assicur/.test(oldNorm)||/polizza assicurativa/.test(context)){
+      if(/massimale/.test(context)) return clean(data.MASSIMALE)?money(data.MASSIMALE):original;
+      return [clean(data.COMPAGNIA_ASSICURATIVA),clean(data.NUMERO_POLIZZA)&&`polizza assicurativa n° ${clean(data.NUMERO_POLIZZA)}`].filter(Boolean).join("\n")||original;
+    }
+    if(/inps|posizione previdenziale/.test(context)) return clean(data.POSIZIONE_INPS||data.INPS)||original;
+    if(/corrispettivo|euro/.test(context)&&/euro|\d/.test(oldNorm)&&clean(data.IMPORTO_CONTRATTO)) return `Euro ${money(data.IMPORTO_CONTRATTO)}`;
+    if(/durata/.test(context)&&/ann|mes/.test(oldNorm)) return duration(data.DATA_INIZIO,data.DATA_FINE)||original;
+    if(/decorrere dal|data inizio/.test(context)) return clean(data.DATA_INIZIO)||original;
+    if(/sottoscritto in data/.test(context)) return clean(data.DATA_CONTRATTO)||original;
+    if(/appaltatore/.test(context)&&(/impresa|sede legale|p iva|rea/.test(oldNorm))&&company){
+      return `${company}, con sede legale in ${clean(data.SEDE_LEGALE)}, P. IVA ${clean(data.PARTITA_IVA)} e C.F. ${clean(data.CODICE_FISCALE)}, R.E.A. n. ${clean(data.REA)}, in persona di ${clean(data.LEGALE_RAPPRESENTANTE)},`;
+    }
+    if(/tel|pec|mail|via|sede/.test(oldNorm)&&company){
+      return [company,clean(data.SEDE_LEGALE),clean(data.EMAIL)&&`E-mail: ${clean(data.EMAIL)}`,clean(data.PEC)&&`PEC: ${clean(data.PEC)}`,clean(data.TELEFONO)&&`Tel.: ${clean(data.TELEFONO)}`].filter(Boolean).join("\n");
+    }
+    if(company&&oldNorm.includes(norm(company))) return company;
+    if(/rappresentante|firma/.test(context)&&clean(data.LEGALE_RAPPRESENTANTE)) return clean(data.LEGALE_RAPPRESENTANTE);
+
+    // Compatibilità con il master analizzato, se il testo non offre indizi sufficienti.
+    const fallback=[works.toUpperCase(),clean(data.DATA_CONTRATTO),company,workSentence,clean(data.POSIZIONE_INPS||data.INPS),workList,
+      [clean(data.COMPAGNIA_ASSICURATIVA),clean(data.NUMERO_POLIZZA)&&`polizza assicurativa n° ${clean(data.NUMERO_POLIZZA)}`].filter(Boolean).join("\n"),
+      clean(data.MASSIMALE)&&money(data.MASSIMALE),clean(data.IMPORTO_CONTRATTO)&&`Euro ${money(data.IMPORTO_CONTRATTO)}`,"","",
+      duration(data.DATA_INIZIO,data.DATA_FINE),clean(data.DATA_INIZIO),"",cityFromAddress(data.SEDE_LEGALE),company,clean(data.LEGALE_RAPPRESENTANTE)];
+    return clean(fallback[index])?fallback[index]:original;
+  }
+  function replaceMultiParagraphMarker(paragraphs,startIndex,endIndex,openAt,closeAt,value){
+    const lines=String(value).split("\n");
+    for(let i=startIndex;i<=endIndex;i++){
+      const p=paragraphs[i], text=paragraphText(p);
+      let from=0,to=text.length;
+      if(i===startIndex)from=openAt;
+      if(i===endIndex)to=closeAt+1;
+      const line=lines[i-startIndex]??"";
+      replaceRange(p,from,to,line);
+    }
+    // Eventuali righe aggiuntive vengono aggiunte all'ultimo paragrafo, senza modificare sezioni o margini.
+    if(lines.length>endIndex-startIndex+1){
+      const p=paragraphs[endIndex];
+      const runs=[...p.getElementsByTagNameNS(W,"r")];
+      const run=runs[runs.length-1];
+      if(run)setRunValue(run,[paragraphText(p),...lines.slice(endIndex-startIndex+1)].filter(Boolean).join("\n"));
+    }
   }
   function processXml(xml,data){
-    const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("Il modello Word contiene XML non leggibile.");
+    const doc=new DOMParser().parseFromString(xml,"application/xml");
+    if(doc.getElementsByTagName("parsererror").length)throw new Error("Il modello Word contiene XML non leggibile.");
     let contextualIndex=0;
-    for(const p of [...doc.getElementsByTagNameNS(W,"p")]){
-      let text=paragraphText(p),matches=[...text.matchAll(/\{\{([^{}]+)\}\}|\{([^{}]+)\}/g)];
-      for(const m of matches.reverse()){
-        const double=!!m[1],inside=m[1]||m[2]||"";let value=double?namedValue(inside,data):contextualValue(contextualIndex,inside,data);if(!double)contextualIndex++;
-        if(value!==inside)replaceRange(p,m.index,m.index+m[0].length,value);
+    const paragraphs=[...doc.getElementsByTagNameNS(W,"p")];
+    for(let i=0;i<paragraphs.length;i++){
+      const p=paragraphs[i];
+      let text=paragraphText(p);
+
+      // Marcatori che iniziano e terminano nello stesso paragrafo.
+      const same=[...text.matchAll(/\{\{([^{}]+)\}\}|\{([^{}]+)\}/g)];
+      if(same.length){
+        for(const m of same.reverse()){
+          const double=!!m[1],inside=m[1]||m[2]||"";
+          const value=double?namedValue(inside,data):contextualValue(contextualIndex,inside,data,text);
+          if(!double)contextualIndex++;
+          if(value!==inside)replaceRange(p,m.index,m.index+m[0].length,value);
+        }
+        continue;
+      }
+
+      // Marcatori estesi su più paragrafi, come il blocco recapiti dell'Appaltatore.
+      const open=text.indexOf("{");
+      if(open<0)continue;
+      let combined=text.slice(open+1),endIndex=-1,closeAt=-1;
+      for(let j=i+1;j<paragraphs.length;j++){
+        const next=paragraphText(paragraphs[j]);
+        const close=next.indexOf("}");
+        combined+="\n"+(close>=0?next.slice(0,close):next);
+        if(close>=0){endIndex=j;closeAt=close;break}
+      }
+      if(endIndex>i){
+        const value=contextualValue(contextualIndex,combined,data,text+" "+combined);
+        contextualIndex++;
+        if(value!==combined)replaceMultiParagraphMarker(paragraphs,i,endIndex,open,closeAt,value);
+        i=endIndex;
       }
     }
     return new XMLSerializer().serializeToString(doc);
@@ -455,7 +535,7 @@ const LayoutPreservingWordGenerator=(()=>{
 })();
 
 function buildData(){const selected=selectedCinemas();const works=selectedWorkTypes();const c=selected[0]||{};const w=works[0]||{};return {
-  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
+  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||document.getElementById("telephone")?.value||"",REPERIBILITA:document.getElementById("availabilityPhone")?.value||"",POSIZIONE_INPS:document.getElementById("inpsPosition")?.value||"",INPS:document.getElementById("inpsPosition")?.value||"",PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
 $("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");const result=await LayoutPreservingWordGenerator.generate(masterFile,buildData());showStatus(result.remaining?`Contratto generato. ${result.remaining} marcatori sono rimasti evidenziati per verifica manuale.`:"Contratto generato correttamente: impaginazione originale e dati evidenziati in giallo.","ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
