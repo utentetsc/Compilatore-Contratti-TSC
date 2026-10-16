@@ -396,8 +396,30 @@ const StrictYellowWordGenerator=(()=>{
     };
   }
   function pText(p){return [...p.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("")}
-  function isYellowRun(run){const h=[...run.getElementsByTagNameNS(W,"highlight")][0];return !!h&&["yellow","7"].includes(String(h.getAttributeNS(W,"val")||h.getAttribute("w:val")||"").toLowerCase())}
-  function markerIsYellow(p,start,end){const ts=[...p.getElementsByTagNameNS(W,"t")];let pos=0,covered=false;for(const t of ts){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;covered=true;if(!isYellowRun(t.parentNode))return false}return covered}
+  function isYellowRun(run){
+    if(!run)return false;
+    // Browser diversi espongono gli attributi OOXML con modalità differenti.
+    const xml=new XMLSerializer().serializeToString(run).toLowerCase();
+    if(/<(?:w:)?highlight\b[^>]*(?:w:)?val=["'](?:yellow|7)["']/.test(xml))return true;
+    if(/<(?:w:)?shd\b[^>]*(?:w:)?fill=["'](?:ffff00|fff2cc|yellow)["']/.test(xml))return true;
+    const h=[...run.getElementsByTagNameNS(W,"highlight")][0];
+    const value=h&&(h.getAttributeNS(W,"val")||h.getAttribute("w:val")||h.getAttribute("val"));
+    return ["yellow","7"].includes(String(value||"").toLowerCase());
+  }
+  function markerIsYellow(p,start,end){
+    const ts=[...p.getElementsByTagNameNS(W,"t")];let pos=0,covered=false,yellow=false;
+    for(const t of ts){
+      const a=pos,b=pos+(t.textContent||"").length;pos=b;
+      if(end<=a||start>=b)continue;
+      covered=true;
+      // Basta che il marcatore appartenga a un'area gialla; Word può spezzarlo in più run.
+      let node=t.parentNode;
+      while(node&&node!==p){if(isYellowRun(node)){yellow=true;break}node=node.parentNode}
+    }
+    if(covered&&yellow)return true;
+    // Ultimo controllo: evidenziazione applicata al paragrafo o a un run contenente il marcatore.
+    return covered&&[...p.getElementsByTagNameNS(W,"r")].some(isYellowRun);
+  }
   function setRun(run,value){
     [...run.childNodes].filter(n=>n.namespaceURI===W&&["t","br","tab"].includes(n.localName)).forEach(n=>run.removeChild(n));
     String(value).split("\n").forEach((part,i)=>{if(i)run.appendChild(run.ownerDocument.createElementNS(W,"w:br"));const t=run.ownerDocument.createElementNS(W,"w:t");t.setAttributeNS(XML,"xml:space","preserve");t.textContent=part;run.appendChild(t)});
@@ -419,7 +441,13 @@ const StrictYellowWordGenerator=(()=>{
   async function generate(file,data){
     if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[]};
     const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,process(xml,map,report))}
-    if(!report.replaced.length)throw new Error("Nessun marcatore valido e giallo trovato. Usa il master definitivo con marcatori nominativi.");
+    if(!report.replaced.length){
+      const details=[];
+      if(report.notYellow.length)details.push(`${report.notYellow.length} marcatori trovati ma non riconosciuti come gialli`);
+      if(report.unknown.length)details.push(`${report.unknown.length} marcatori sconosciuti`);
+      if(report.noData.length)details.push(`${report.noData.length} marcatori senza dati`);
+      throw new Error(`Nessun marcatore compilabile. ${details.join("; ")||"Il file caricato non contiene marcatori nominativi {{...}}"}.`);
+    }
     const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;
     if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}
     return report;
