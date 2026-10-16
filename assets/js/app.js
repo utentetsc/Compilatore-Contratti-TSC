@@ -205,9 +205,19 @@ async function runLegalComplianceCheck(files,evidenceText=""){
   renderLegalCompliance(lastComplianceDocumentText);
 }
 
-function selectedWorkTypes(){return [...$("workSelect").selectedOptions].map(o=>setup.workTypes.find(x=>x.id===o.value)).filter(Boolean)}
+function selectedWorkTypes(){
+  return [...$("workSelect").selectedOptions].map(o=>{
+    const found=setup.workTypes.find(x=>x.id===o.value);
+    return found||{id:o.value,name:o.textContent.trim(),description:""};
+  }).filter(x=>x.name);
+}
 function updateWorkSummary(){const list=selectedWorkTypes();$("workSelectionSummary").textContent=list.length?`${list.length} tipologie: ${list.map(x=>x.name).join(", ")}`:"Nessuna tipologia selezionata"}
-function selectedCinemas(){return [...$("cinemaSelect").selectedOptions].map(o=>setup.cinemas.find(x=>x.id===o.value)).filter(Boolean)}
+function selectedCinemas(){
+  return [...$("cinemaSelect").selectedOptions].map(o=>{
+    const found=setup.cinemas.find(x=>x.id===o.value);
+    return found||{id:o.value,name:o.textContent.trim(),address:"",city:""};
+  }).filter(x=>x.name);
+}
 function updateCinemaSummary(){const list=selectedCinemas();$("cinemaSelectionSummary").textContent=list.length?`${list.length} cinema: ${list.map(x=>x.name).join(", ")}`:"Nessun cinema selezionato"}
 function cinemaMatches(dbName,selected){
   const a=ContractDbImporter.norm(dbName).replace(/^tsc /,""), b=ContractDbImporter.norm(selected).replace(/^tsc /,"");
@@ -228,7 +238,8 @@ function applyDbMatches(matches,cinemas,works,fromSupplier){
   if(fromSupplier&&unique.length){
     const supplier=unique[0].supplier||"";
     $("databaseCompanyName").value=supplier;
-    $("companyName").value=supplier;
+    const official=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value);
+    if(official)$("companyName").value=official;
     $("supplier").value=supplier;
   }
   const box=$("dbMatchSummary");
@@ -370,20 +381,20 @@ function value(id){return $(id).value.trim()}
 function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/${m}/${y}`}
 
 // ============================================================
-// WORD AREE GIALLE V4: nessuna graffa e nessun marcatore.
-// Il motore e separato in assets/js/yellow-word-generator.js.
+// WORD AREE GIALLE V4.1: nessuna graffa e nessun marcatore.
+// Motore separato: assets/js/yellow-word-generator.js
 // ============================================================
 function buildData(){const selected=selectedCinemas();const works=selectedWorkTypes();const c=selected[0]||{};const w=works[0]||{};return {
-  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),POSIZIONE_INPS:document.getElementById("inpsPosition")?.value||"",EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||"",COSTI_SICUREZZA:document.getElementById("safetyCosts")?.value||"",TARIFFE_STRAORDINARIE:document.getElementById("extraRates")?.value||"",PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
+  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),POSIZIONE_INPS:document.getElementById("inpsPosition")?.value||"",POSIZIONE_INAIL:document.getElementById("inailPosition")?.value||"",EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||"",TELEFONO_REPERIBILITA:document.getElementById("emergencyPhone")?.value||"",COSTI_SICUREZZA:document.getElementById("safetyCosts")?.value||"",TARIFFE_STRAORDINARIE:document.getElementById("extraRates")?.value||"",PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
 $("generateBtn").onclick=async()=>{
   try{
-    if(!masterFile)throw new Error("Carica prima il contratto master originale in formato DOCX.");
-    if(!window.YellowAreaWordGenerator)throw new Error("Motore Aree Gialle v4 non disponibile.");
+    if(!masterFile)throw new Error("Carica prima il master originale senza marcatori.");
+    if(!window.YellowAreaWordGenerator)throw new Error("Motore Aree Gialle v4.1 non disponibile.");
     const r=await YellowAreaWordGenerator.generate(masterFile,buildData());
     const warning=r.missing.length?` Attenzione: ${r.missing.length} campi impostati come [DA COMPILARE].`:"";
-    showStatus(`Contratto generato da aree gialle: ${r.replaced} campi compilati.${warning}`,r.missing.length?"":"ok");
+    showStatus(`Contratto generato da aree gialle: ${r.replaced} aree logiche compilate.${warning}`,r.missing.length?"":"ok");
   }catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}
 };
 $("contractDate").value=new Date().toISOString().slice(0,10);renderSetup();renderLegalCompliance();

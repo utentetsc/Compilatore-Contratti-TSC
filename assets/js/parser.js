@@ -1,5 +1,5 @@
 const DocumentParser = (() => {
-  const FIELD_LABELS={companyName:"Ragione sociale",vatNumber:"Partita IVA",fiscalCode:"Codice fiscale",rea:"REA",registeredOffice:"Sede legale",pec:"PEC",legalRepresentative:"Legale rappresentante",insuranceCompany:"Compagnia assicurativa",policyNumber:"Numero polizza",policyExpiry:"Scadenza polizza",policyLimit:"Massimale",durcProtocol:"Protocollo DURC",durcExpiry:"Scadenza DURC",durcStatus:"Esito DURC"};
+  const FIELD_LABELS={companyName:"Ragione sociale",vatNumber:"Partita IVA",fiscalCode:"Codice fiscale",rea:"REA",registeredOffice:"Sede legale",pec:"PEC",legalRepresentative:"Legale rappresentante",insuranceCompany:"Compagnia assicurativa",policyNumber:"Numero polizza",policyExpiry:"Scadenza polizza",policyLimit:"Massimale",durcProtocol:"Protocollo DURC",durcExpiry:"Scadenza DURC",durcStatus:"Esito DURC",phone:"Telefono",email:"E-mail",inpsPosition:"Posizione INPS",inailPosition:"Posizione INAIL"};
   const clean=v=>String(v||"").replace(/\s+/g," ").trim().replace(/[;,.]+$/g,"");
   const dateISO=v=>{const m=String(v||"").match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})\b/);return m?`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`:""};
   async function pdfText(file){
@@ -24,6 +24,14 @@ const DocumentParser = (() => {
     add("registeredOffice",first(text,[new RegExp("(?:sede\\s+legale|indirizzo\\s+sede)\\s*[:\\-]?\\s*(.{5,150}?)"+stop,"i")]),.82);
     add("pec",first(text,[/(?:pec|posta elettronica certificata)\s*[:\-]?\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i]),.98);
     add("legalRepresentative",first(text,[new RegExp("(?:legale\\s+rappresentante|rappresentante\\s+legale)\\s*[:\\-]?\\s*(.{3,90}?)"+stop,"i")]),.82);
+    // Modello DUVRI e schede anagrafiche: fonte prioritaria per dati operativi.
+    add("companyName",first(text,[/(?:ditta\s+aggiudicataria[^:]*|denominazione\s+ditta|ragione\s+sociale)\s*:\s*([^\n]{3,100}?)(?=\s+(?:P\.?\s*IVA|C\.?F\.?|forma\s+giuridica|legale\s+rappresentante)|$)/i]),.98);
+    add("registeredOffice",first(text,[/(?:sede\s+legale|indirizzo)\s*:\s*([^\n]{5,150}?)(?=\s+(?:appaltatore\s*-\s*esecutori|recapiti|@?email|n[°º]\s*iscrizione)|$)/i]),.97);
+    add("legalRepresentative",first(text,[/(?:legale\s+rappresentante)\s*:\s*(?:sig\.?\s*)?([A-ZÀ-Ü][A-ZÀ-Ü' -]{3,80}?)(?=\s+(?:sede\s+legale|denominazione|ragione\s+sociale|forma\s+giuridica|indirizzo|recapiti)|$)/i]),.98);
+    add("phone",first(text,[/(?:recapiti|tel(?:efono)?)[\s:]*([+\d][\d\s./-]{6,25})/i]),.95);
+    add("email",first(text,[/(?:@?email|e-mail|mail)\s*:\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i]),.98);
+    add("inpsPosition",first(text,[/(?:n[°º]\s*iscrizione\s+inps|matricola\s+inps|posizione\s+inps)\s*[:;\-]?\s*([A-Z0-9./-]{5,30})/i]),.98);
+    add("inailPosition",first(text,[/(?:n[°º]\s*iscrizione\s+inail|posizione\s+inail)\s*[:;\-]?\s*([A-Z0-9./-]{5,40}(?:\s*[-–]\s*pat\.?\s*[A-Z0-9./-]+)?)/i]),.96);
 
     // Assicurazione: prima cerca denominazioni vicine a parole assicurative, poi marchi comuni.
     let insurer=first(text,[/(?:societ[aà]|impresa|compagnia)\s+(?:di\s+)?assicurazione\s*[:\-]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'.-]{2,80}?)(?=\s+(?:polizza|con\s+sede|numero|n\.)|$)/i,/(?:assicuratore|compagnia)\s*[:\-]\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'.-]{2,80}?)(?=\s+(?:polizza|numero|n\.)|$)/i]);
