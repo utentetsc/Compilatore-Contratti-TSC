@@ -55,3 +55,10 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - polizza: priorità documento assicurativo;
 - DURC: priorità documento DURC;
 - normalizzazione di nomi e indirizzi con iniziali maiuscole, mantenendo sigle e codici.
+
+
+### Versione 0.4.3 - Firma ripulita
+- eliminazione completa dei frammenti del vecchio appaltatore nella cella firma;
+- ragione sociale completa nella cella destra;
+- linea, nominativo e dicitura del legale rappresentante allineati verticalmente al blocco della firma del committente;
+- nominativo con sole iniziali maiuscole.
