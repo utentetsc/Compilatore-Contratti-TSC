@@ -372,7 +372,7 @@ function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/$
 // ============================================================
 // WORD DEFINITIVO: doppia verifica marcatore nominativo + giallo
 // ============================================================
-const WORD_GENERATOR_BUILD="word-v8-2026-10-16";
+const WORD_GENERATOR_BUILD="word-v9-2026-10-16";
 console.info("Word generator build:",WORD_GENERATOR_BUILD);
 const StrictYellowWordGenerator=(()=>{
   const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -438,37 +438,26 @@ const StrictYellowWordGenerator=(()=>{
   }
   function process(xml,map,report){
     report.rawMarkers=(report.rawMarkers||0)+Math.max(0,xml.split("{").length-1);
-    const keys=Object.keys(map);
-    for(const key of keys){
-      const candidates=[
-        `{{${key}}}`,`{${key}}}`,
-        `&#123;&#123;${key}&#125;&#125;`,`&#123;${key}&#125;`,
-        `&#x7B;&#x7B;${key}&#x7D;&#x7D;`,`&#x7B;${key}&#x7D;`
-      ];
-      for(const token of candidates){
-        let from=0;
+    for(const [key,rawValue] of Object.entries(map)){
+      const tokens=[`{{${key}}}`,`{${key}}}`];
+      for(const token of tokens){
+        if(!xml.includes(token))continue;
+        report.textMarkers=(report.textMarkers||0)+(xml.split(token).length-1);
+        if(!clean(rawValue)){report.noData.push(key);continue}
+        const value=xmlTextValue(rawValue);
+        let cursor=0;
         while(true){
-          const index=xml.indexOf(token,from);if(index<0)break;
-          report.textMarkers=(report.textMarkers||0)+1;
-          const runStarts=[xml.lastIndexOf("<w:r ",index),xml.lastIndexOf("<w:r>",index)].filter(v=>v>=0);
-          const runStart=runStarts.length?Math.max(...runStarts):-1,runEnd=xml.indexOf("</w:r>",index);
+          const index=xml.indexOf(token,cursor);if(index<0)break;
+          // Doppia verifica: il marcatore deve trovarsi nello stesso run Word che contiene il giallo.
+          const runStart=Math.max(xml.lastIndexOf("<w:r ",index),xml.lastIndexOf("<w:r>",index));
+          const runEnd=xml.indexOf("</w:r>",index);
           const runXml=runStart>=0&&runEnd>index?xml.slice(runStart,runEnd+6):"";
-          const yellow=/(?:<w:highlight\\b[^>]*w:val=["'](?:yellow|7)["']|<w:shd\\b[^>]*w:fill=["'](?:FFFF00|FFF2CC)["'])/i.test(runXml);
-          if(!yellow){report.notYellow.push(key);from=index+token.length;continue}
-          if(!clean(map[key])){report.noData.push(key);from=index+token.length;continue}
-          const value=xmlTextValue(map[key]);
+          const yellow=runXml.includes('w:highlight w:val="yellow"')||runXml.includes("w:highlight w:val='yellow'")||runXml.includes('w:shd w:fill="FFFF00"')||runXml.includes('w:shd w:fill="FFF2CC"');
+          if(!yellow){report.notYellow.push(key);cursor=index+token.length;continue}
           xml=xml.slice(0,index)+value+xml.slice(index+token.length);
-          report.replaced.push(key);from=index+value.length;
+          report.replaced.push(key);cursor=index+value.length;
         }
       }
-    }
-    // Rileva marcatori nominativi non previsti dalla mappa senza usare il DOM.
-    let scan=0;
-    while(scan<xml.length){
-      const a=xml.indexOf("{",scan);if(a<0)break;const dbl=xml[a+1]==="{";const close=dbl?"}}":"}";const b=xml.indexOf(close,a+(dbl?2:1));if(b<0)break;
-      const rawKey=xml.slice(a+(dbl?2:1),b).trim();
-      if(/^[A-Z0-9_]+$/.test(rawKey)&&!Object.prototype.hasOwnProperty.call(map,rawKey))report.unknown.push(rawKey);
-      scan=b+close.length;
     }
     return xml;
   }
