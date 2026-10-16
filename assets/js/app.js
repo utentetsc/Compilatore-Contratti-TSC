@@ -368,10 +368,96 @@ function renderReview(result){
 }
 function value(id){return $(id).value.trim()}
 function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/${m}/${y}`}
+
+// ============================================================
+// GENERATORE WORD A LAYOUT INVARIATO
+// Modifica soltanto i nodi di testo racchiusi tra { } e conserva
+// struttura OOXML, sezioni, margini, font, tabelle, header/footer.
+// ============================================================
+const LayoutPreservingWordGenerator=(()=>{
+  const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const XML="http://www.w3.org/XML/1998/namespace";
+  const escFile=v=>String(v||"contratto").replace(/[\\/:*?"<>|]+/g,"-").trim();
+  const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();
+  const clean=v=>String(v??"").replace(/\s+/g," ").trim();
+  const money=v=>{const n=Number(String(v||"").replace(/\./g,"").replace(",","."));return Number.isFinite(n)?n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2}):clean(v)};
+  const cityFromAddress=v=>{
+    const text=clean(v);let m=text.match(/\b\d{5}\s+([A-Za-zÀ-ÿ' ]+?)(?:\s+(?:Appaltatore|Esecutori|$)|\s*[-–,])/i);
+    if(m)return clean(m[1]);
+    m=text.match(/,\s*([A-Za-zÀ-ÿ' ]+?)(?:\s*\([A-Z]{2}\))?(?:\s|$)/);return m?clean(m[1]):"";
+  };
+  const duration=(start,end)=>{
+    if(!start||!end)return "";const parse=x=>{const p=String(x).split(/[\/-]/).map(Number);return p[0]>31?new Date(p[0],p[1]-1,p[2]):new Date(p[2],p[1]-1,p[0])};
+    const a=parse(start),b=parse(end);if(isNaN(a)||isNaN(b))return "";let months=(b.getFullYear()-a.getFullYear())*12+b.getMonth()-a.getMonth();if(b.getDate()>=a.getDate())months++;return months&&months%12===0?`${months/12} (${months/12===1?"uno":"due"}) anni`:`${months} mesi`;
+  };
+  function paragraphText(p){return [...p.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("")}
+  function ensureYellow(run){
+    let rPr=[...run.childNodes].find(n=>n.namespaceURI===W&&n.localName==="rPr");
+    if(!rPr){rPr=run.ownerDocument.createElementNS(W,"w:rPr");run.insertBefore(rPr,run.firstChild)}
+    let h=[...rPr.childNodes].find(n=>n.namespaceURI===W&&n.localName==="highlight");
+    if(!h){h=run.ownerDocument.createElementNS(W,"w:highlight");rPr.appendChild(h)}h.setAttributeNS(W,"w:val","yellow");
+  }
+  function setRunValue(run,value){
+    ensureYellow(run);
+    [...run.childNodes].filter(n=>n.namespaceURI===W&&["t","br","tab"].includes(n.localName)).forEach(n=>run.removeChild(n));
+    const parts=String(value).split("\\n");
+    parts.forEach((part,i)=>{if(i)run.appendChild(run.ownerDocument.createElementNS(W,"w:br"));const t=run.ownerDocument.createElementNS(W,"w:t");t.setAttributeNS(XML,"xml:space","preserve");t.textContent=part;run.appendChild(t)});
+  }
+  function replaceRange(p,start,end,value){
+    const nodes=[...p.getElementsByTagNameNS(W,"t")];let pos=0,firstRun=null;
+    for(const t of nodes){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;const run=t.parentNode;if(!firstRun)firstRun=run;const left=Math.max(0,start-a),right=Math.min((t.textContent||"").length,end-a);t.textContent=(t.textContent||"").slice(0,left)+(t.textContent||"").slice(right)}
+    if(firstRun)setRunValue(firstRun,value);
+  }
+  function namedValue(key,data){
+    const k=norm(key).replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").toUpperCase();
+    const aliases={DITTA:"RAGIONE_SOCIALE",APPALTATORE:"RAGIONE_SOCIALE",NOMI_CINEMA:"NOMI_CINEMA",CINEMA:"NOMI_CINEMA",LAVORAZIONI:"TIPOLOGIE_LAVORAZIONE",OGGETTO:"TIPOLOGIE_LAVORAZIONE",IMPORTO:"IMPORTO_CONTRATTO",POLIZZA:"NUMERO_POLIZZA",RAPPRESENTANTE:"LEGALE_RAPPRESENTANTE"};
+    return clean(data[k]??data[aliases[k]||""]??"");
+  }
+  function contextualValue(index,old,data){
+    const works=clean(data.TIPOLOGIE_LAVORAZIONE);const company=clean(data.RAGIONE_SOCIALE||data.DENOMINAZIONE_DB||data.DITTA);
+    const map=[
+      works.toUpperCase(), clean(data.DATA_CONTRATTO),
+      company?`${company}, con sede legale in ${clean(data.SEDE_LEGALE)}, P. IVA ${clean(data.PARTITA_IVA)} e C.F. ${clean(data.CODICE_FISCALE)}, R.E.A. n. ${clean(data.REA)}, in persona di ${clean(data.LEGALE_RAPPRESENTANTE)},`:"",
+      works?`della conduzione e manutenzione di ${works}`:"", "",
+      works?works.split(/,\s*/).map((x,i)=>`${String.fromCharCode(97+i)}) ${x};`).join("\\n"):"",
+      [clean(data.COMPAGNIA_ASSICURATIVA),clean(data.NUMERO_POLIZZA)&&`polizza assicurativa n° ${clean(data.NUMERO_POLIZZA)}`].filter(Boolean).join("\\n"),
+      clean(data.MASSIMALE)&&`${money(data.MASSIMALE)}`, clean(data.IMPORTO_CONTRATTO)&&`Euro ${money(data.IMPORTO_CONTRATTO)}`, "", "",
+      duration(data.DATA_INIZIO,data.DATA_FINE), clean(data.DATA_INIZIO),
+      company?[company,clean(data.SEDE_LEGALE),clean(data.EMAIL)&&`E-mail: ${clean(data.EMAIL)}`,clean(data.PEC)&&`PEC: ${clean(data.PEC)}`,clean(data.TELEFONO)&&`Tel.: ${clean(data.TELEFONO)}`].filter(Boolean).join("\\n"):"",
+      cityFromAddress(data.SEDE_LEGALE),company,clean(data.LEGALE_RAPPRESENTANTE)
+    ];
+    return clean(map[index])?map[index]:old;
+  }
+  function processXml(xml,data){
+    const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("Il modello Word contiene XML non leggibile.");
+    let contextualIndex=0;
+    for(const p of [...doc.getElementsByTagNameNS(W,"p")]){
+      let text=paragraphText(p),matches=[...text.matchAll(/\{\{([^{}]+)\}\}|\{([^{}]+)\}/g)];
+      for(const m of matches.reverse()){
+        const double=!!m[1],inside=m[1]||m[2]||"";let value=double?namedValue(inside,data):contextualValue(contextualIndex,inside,data);if(!double)contextualIndex++;
+        if(value!==inside)replaceRange(p,m.index,m.index+m[0].length,value);
+      }
+    }
+    return new XMLSerializer().serializeToString(doc);
+  }
+  async function generate(file,data){
+    if(typeof PizZip==="undefined")throw new Error("Libreria PizZip non caricata: controlla gli script della pagina.");
+    const zip=new PizZip(await file.arrayBuffer());
+    const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));
+    for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,processXml(xml,data))}
+    const remaining=paths.reduce((n,path)=>n+((zip.file(path)?.asText().match(/\{\{?[^{}]+\}\}?/g)||[]).length),0);
+    const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"});
+    const name=`${escFile(data.NUMERO_CONTRATTO||"Contratto_compilato")}.docx`;
+    if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+    return {remaining};
+  }
+  return {generate};
+})();
+
 function buildData(){const selected=selectedCinemas();const works=selectedWorkTypes();const c=selected[0]||{};const w=works[0]||{};return {
   NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
-$("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");await DocumentGenerator.generate(masterFile,buildData());showStatus("Contratto generato correttamente.","ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
+$("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");const result=await LayoutPreservingWordGenerator.generate(masterFile,buildData());showStatus(result.remaining?`Contratto generato. ${result.remaining} marcatori sono rimasti evidenziati per verifica manuale.`:"Contratto generato correttamente: impaginazione originale e dati evidenziati in giallo.","ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
 $("contractDate").value=new Date().toISOString().slice(0,10);renderSetup();renderLegalCompliance();
 showStatus(`Database pronto: ${setup.cinemas.length} cinema, ${setup.workTypes.length} tipologie, ${setup.contracts.length} abbinamenti.`,"ok");
