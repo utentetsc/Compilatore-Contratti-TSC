@@ -100,12 +100,19 @@ const LEGAL_COMPLIANCE_RULES = [
   {test:/\b(estintor|manichette|evacuator|rilevazione fumi|sprinkler|efc|antincendio|lame d['’]?acqua)/i,letters:["G"],ateco:["43.22"],label:"Protezione antincendio"}
 ];
 let lastComplianceDocumentText="";
+let lastMatchedWorkNames=[];
 
 function complianceNorm(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim()}
 function findAtecoCodes(text){
   const out=new Set();
-  const re=/\b(?:ateco(?:\s+primario|\s+prevalente|\s+secondario)?\s*[:\-]?\s*)?(\d{2}(?:[.\s]\d{1,2}){1,3})\b/gi;
-  let m; while((m=re.exec(text))) out.add(m[1].replace(/\s+/g,"."));
+  const labelled=/\b(?:codice\s+)?ateco(?:\s+primario|\s+prevalente|\s+secondario)?\s*[:\-]?\s*(\d{2}(?:[.\s]\d{1,2}){1,3}|\d{6})\b/gi;
+  let m; while((m=labelled.exec(text))){
+    let code=m[1].replace(/\s+/g,".");
+    if(/^\d{6}$/.test(code))code=`${code.slice(0,2)}.${code.slice(2,4)}.${code.slice(4)}`;
+    out.add(code);
+  }
+  const dotted=/\b(\d{2}\.\d{1,2}(?:\.\d{1,2})?)\b/g;
+  while((m=dotted.exec(text)))out.add(m[1]);
   return [...out];
 }
 function findDm37Letters(text){
@@ -149,8 +156,9 @@ function ensureCompliancePanel(){
 }
 function renderLegalCompliance(text=lastComplianceDocumentText){
   const panel=ensureCompliancePanel();
-  const works=selectedWorkTypes();
-  if(!works.length){panel.innerHTML='<h3>Verifica camerale delle lavorazioni</h3><p>La verifica partirà dopo la selezione delle tipologie di lavorazione.</p>';return}
+  const selectedWorks=selectedWorkTypes();
+  const works=selectedWorks.length ? selectedWorks : lastMatchedWorkNames.map(name=>({name}));
+  if(!works.length){panel.innerHTML='<h3>Verifica camerale delle lavorazioni</h3><p>La verifica partirà dopo il riconoscimento della ditta e delle tipologie di lavorazione.</p>';return}
   const normalized=complianceNorm(text);
   const letters=findDm37Letters(normalized),ateco=findAtecoCodes(normalized);
   const rows=[];
@@ -177,8 +185,9 @@ function renderLegalCompliance(text=lastComplianceDocumentText){
     <details style="margin-top:10px"><summary>Dati camerali individuati</summary><p>Lettere D.M. 37/2008: <b>${letters.join(", ")||"nessuna individuata"}</b><br>Codici ATECO: <b>${ateco.join(", ")||"nessuno individuato"}</b></p></details>
     <p style="font-size:12px;margin:12px 0 0;color:#475569">Controllo preliminare documentale. L’ATECO è un indicatore di coerenza, non sostituisce l’abilitazione camerale. Verificare visura aggiornata, attività esercitata, lettere D.M. 37/2008 ed eventuali requisiti speciali.</p>`;
 }
-async function runLegalComplianceCheck(files){
-  lastComplianceDocumentText=await extractComplianceText(files);
+async function runLegalComplianceCheck(files,evidenceText=""){
+  const rawText=await extractComplianceText(files);
+  lastComplianceDocumentText=[rawText,evidenceText].filter(Boolean).join("\n");
   renderLegalCompliance(lastComplianceDocumentText);
 }
 
@@ -262,6 +271,7 @@ function supplierCandidates(company){
 function applySupplierChoice(supplier,score,sourceName){
   const matches=(setup.contracts||[]).filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
   const cinemaNames=[...new Set(matches.map(x=>x.cinema))],workNames=[...new Set(matches.map(x=>x.workType))];
+  lastMatchedWorkNames=[...workNames];
   [...$("cinemaSelect").options].forEach(o=>{const c=setup.cinemas.find(x=>x.id===o.value);o.selected=!!c&&cinemaNames.some(n=>cinemaKey(n)===cinemaKey(c.dbName||c.name))});
   [...$("workSelect").options].forEach(o=>{const w=setup.workTypes.find(x=>x.id===o.value);o.selected=!!w&&workNames.some(n=>ContractDbImporter.norm(n)===ContractDbImporter.norm(w.name))});
   $("documentCompanyName").value=sourceName||$("documentCompanyName").value;
@@ -270,7 +280,7 @@ function applySupplierChoice(supplier,score,sourceName){
   $("supplier").value=supplier;
   const cinemas=selectedCinemas(),works=selectedWorkTypes();
   updateCinemaSummary();updateWorkSummary();applyDbMatches(matches,cinemas,works,true);
-  renderLegalCompliance();
+  setTimeout(()=>renderLegalCompliance(),0);
   const panel=$("supplierMatchPanel");panel.hidden=true;
   const box=$("dbMatchSummary");
   const label=score===100?"Corrispondenza esatta":score>=80?"Corrispondenza probabile":"Corrispondenza scelta manualmente";
@@ -309,7 +319,10 @@ document.addEventListener("click",e=>{
   applySupplierChoice(btn.dataset.supplier,Number(btn.dataset.score),$("documentCompanyName").value);
 });
 $("cinemaSelect").addEventListener("change",applyContractSuggestion);
-$("workSelect").addEventListener("change",()=>{applyContractSuggestion();renderLegalCompliance();});
+$("workSelect").addEventListener("change",()=>{
+  lastMatchedWorkNames=selectedWorkTypes().map(x=>x.name);
+  applyContractSuggestion();renderLegalCompliance();
+});
 $("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const status=$("contractDbStatus");try{status.textContent="Importazione in corso...";status.className="status";const contracts=await ContractDbImporter.read(file);setup.contracts=contracts;setup.workTypes=ContractDbImporter.workTypes(contracts);syncCinemasFromContracts();StorageService.save(setup);renderSetup();status.textContent=`Database importato: ${contracts.length} abbinamenti e ${setup.workTypes.length} tipologie.`;status.className="status ok"}catch(err){console.error(err);status.textContent=err.message||"Errore durante l'importazione.";status.className="status error"}finally{e.target.value=""}};
 
 $("extractBtn").onclick=async()=>{
@@ -323,7 +336,8 @@ $("extractBtn").onclick=async()=>{
   $("documentCompanyName").value=extractedCompany;
   const dbAutoMatched=autoSelectFromCompany();
   renderReview(result);
-  await runLegalComplianceCheck(documentFiles);
+  const evidenceText=(result.evidence||[]).map(item=>`${item.label||""} ${item.value||""}`).join("\n");
+  await runLegalComplianceCheck(documentFiles,evidenceText);
   const found=Object.keys(result.values).length;
   if(!dbAutoMatched)showStatus(`Recupero completato: ${found} campi trovati, ${result.conflicts.length} conflitti da verificare. Nessuna ditta DB riconosciuta automaticamente.`,found?"ok":"error");
 };
