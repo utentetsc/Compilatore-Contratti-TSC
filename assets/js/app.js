@@ -429,23 +429,39 @@ const StrictYellowWordGenerator=(()=>{
   }
   function replace(p,start,end,value){const ts=elementsByLocalName(p,"t");let pos=0,first=null;for(const t of ts){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;if(!first)first=t.parentNode;const l=Math.max(0,start-a),r=Math.min((t.textContent||"").length,end-a);t.textContent=(t.textContent||"").slice(0,l)+(t.textContent||"").slice(r)}if(first)setRun(first,value)}
   function process(xml,map,report){
-    report.rawMarkers=(report.rawMarkers||0)+((xml.match(/\{\{[A-Z0-9_]+\}\}/g)||[]).length);
+    report.rawMarkers=(report.rawMarkers||0)+Math.max(0,xml.split("{").length-1);
     const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("XML Word non leggibile.");
     const paragraphs=elementsByLocalName(doc,"p");
     report.paragraphs=(report.paragraphs||0)+paragraphs.length;
     for(const p of paragraphs){
-      const text=pText(p),matches=[...text.matchAll(/\{\{\s*([A-Z0-9_]+)\s*\}\}/g)];
-      for(const m of matches.reverse()){
-        const key=normKey(m[1]),valid=Object.prototype.hasOwnProperty.call(map,key),yellow=markerIsYellow(p,m.index,m.index+m[0].length);
-        if(!valid){report.unknown.push(key);continue} if(!yellow){report.notYellow.push(key);continue}
-        if(!clean(map[key])){report.noData.push(key);continue} replace(p,m.index,m.index+m[0].length,map[key]);report.replaced.push(key);
+      const text=pText(p),matches=[];
+      let scan=0;
+      while(scan<text.length){
+        const start=text.indexOf("{",scan);if(start<0)break;
+        const isDouble=text[start+1]==="{";
+        const openLength=isDouble?2:1;
+        const closeToken=isDouble?"}}":"}";
+        const end=text.indexOf(closeToken,start+openLength);if(end<0)break;
+        const rawKey=text.slice(start+openLength,end).trim();
+        const key=normKey(rawKey);
+        // Accetta solo marcatori nominativi, mai vecchi testi contrattuali tra graffe.
+        if(/^[A-Z0-9_]+$/.test(rawKey)&&key){
+          matches.push({index:start,end:end+closeToken.length,key});
+        }
+        scan=end+closeToken.length;
       }
-      const yellowRuns=elementsByLocalName(p,"r").filter(isYellowRun);for(const r of yellowRuns){const rt=[...r.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("");if(rt&& !/\{\{[A-Z0-9_]+\}\}/.test(rt)&&text.includes("{{"))report.yellowWithoutMarker.push(rt.slice(0,60))}
+      report.textMarkers=(report.textMarkers||0)+matches.length;
+      for(const m of matches.reverse()){
+        const key=m.key,valid=Object.prototype.hasOwnProperty.call(map,key),yellow=markerIsYellow(p,m.index,m.end);
+        if(!valid){report.unknown.push(key);continue} if(!yellow){report.notYellow.push(key);continue}
+        if(!clean(map[key])){report.noData.push(key);continue} replace(p,m.index,m.end,map[key]);report.replaced.push(key);
+      }
+      const yellowRuns=elementsByLocalName(p,"r").filter(isYellowRun);for(const r of yellowRuns){const rt=[...r.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("");if(rt&&!rt.includes("{")&&text.includes("{"))report.yellowWithoutMarker.push(rt.slice(0,60))}
     }
     return new XMLSerializer().serializeToString(doc);
   }
   async function generate(file,data){
-    if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[],rawMarkers:0,paragraphs:0};
+    if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[],rawMarkers:0,textMarkers:0,paragraphs:0};
     const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));
     if(!paths.length)throw new Error("Il file caricato non contiene la struttura interna di un documento Word DOCX.");
     for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,process(xml,map,report))}
@@ -454,7 +470,8 @@ const StrictYellowWordGenerator=(()=>{
       if(report.notYellow.length)details.push(`${report.notYellow.length} marcatori trovati ma non riconosciuti come gialli`);
       if(report.unknown.length)details.push(`${report.unknown.length} marcatori sconosciuti`);
       if(report.noData.length)details.push(`${report.noData.length} marcatori senza dati`);
-      if(report.rawMarkers)details.push(`${report.rawMarkers} marcatori presenti nell'XML ma non letti nei paragrafi`);
+      details.push(`${report.rawMarkers} aperture { presenti nell'XML`);
+      details.push(`${report.textMarkers} marcatori ricostruiti dal testo`);
       details.push(`${report.paragraphs} paragrafi analizzati`);
       throw new Error(`Nessun marcatore compilabile. ${details.join("; ")}.`);
     }
