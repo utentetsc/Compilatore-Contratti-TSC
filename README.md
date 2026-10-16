@@ -33,3 +33,10 @@ Il segnaposto deve essere digitato nello stesso stile e non deve essere composto
 ## Passo successivo
 
 Personalizzare il parser con visure, polizze e altri documenti reali, aggiungendo lettura PDF testuale ed eventualmente OCR per scansioni.
+
+
+### Versione integrata 0.3.1
+- Cinema e tipologie restano vuoti prima del riconoscimento della ditta.
+- Il recupero dal DB parte soltanto dopo il completamento effettivo della lettura documentale.
+- Dopo il matching vengono caricati esclusivamente cinema e lavorazioni della ditta riconosciuta.
+- Ditta, frequenze e importo complessivo vengono compilati dal DB.
