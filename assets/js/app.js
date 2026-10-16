@@ -154,11 +154,25 @@ function ensureCompliancePanel(){
   (anchor?.parentElement||document.body).appendChild(panel);
   return panel;
 }
+function complianceWorkItems(){
+  const selected=selectedWorkTypes();
+  if(selected.length)return selected;
+  if(lastMatchedWorkNames.length)return lastMatchedWorkNames.map(name=>({name}));
+  const supplier=($("databaseCompanyName").value||$("supplier").value||$("companyName").value||"").trim();
+  if(supplier){
+    const names=[...new Set((setup.contracts||[])
+      .filter(row=>ContractDbImporter.norm(row.supplier)===ContractDbImporter.norm(supplier))
+      .map(row=>row.workType).filter(Boolean))];
+    if(names.length){lastMatchedWorkNames=[...names];return names.map(name=>({name}))}
+  }
+  // Ultimo fallback: le opzioni evidenziate o le lavorazioni visibili associate al DB.
+  const visible=[...$("workSelect").options].filter(option=>option.selected).map(option=>option.textContent.trim()).filter(Boolean);
+  return visible.map(name=>({name}));
+}
 function renderLegalCompliance(text=lastComplianceDocumentText){
   const panel=ensureCompliancePanel();
-  const selectedWorks=selectedWorkTypes();
-  const works=selectedWorks.length ? selectedWorks : lastMatchedWorkNames.map(name=>({name}));
-  if(!works.length){panel.innerHTML='<h3>Verifica camerale delle lavorazioni</h3><p>La verifica partirà dopo il riconoscimento della ditta e delle tipologie di lavorazione.</p>';return}
+  const works=complianceWorkItems();
+  if(!works.length){panel.innerHTML='<h3>Verifica camerale delle lavorazioni</h3><p>La verifica partirà dopo il riconoscimento della ditta e delle tipologie di lavorazione.</p><button type="button" id="retryComplianceCheck">Riprova verifica</button>';document.getElementById("retryComplianceCheck").onclick=()=>renderLegalCompliance(lastComplianceDocumentText);return}
   const normalized=complianceNorm(text);
   const letters=findDm37Letters(normalized),ateco=findAtecoCodes(normalized);
   const rows=[];
@@ -274,6 +288,8 @@ function applySupplierChoice(supplier,score,sourceName){
   lastMatchedWorkNames=[...workNames];
   [...$("cinemaSelect").options].forEach(o=>{const c=setup.cinemas.find(x=>x.id===o.value);o.selected=!!c&&cinemaNames.some(n=>cinemaKey(n)===cinemaKey(c.dbName||c.name))});
   [...$("workSelect").options].forEach(o=>{const w=setup.workTypes.find(x=>x.id===o.value);o.selected=!!w&&workNames.some(n=>ContractDbImporter.norm(n)===ContractDbImporter.norm(w.name))});
+  // Second pass by visible text: avoids stale/mismatched IDs after a DB import.
+  [...$("workSelect").options].forEach(o=>{if(workNames.some(n=>ContractDbImporter.norm(n)===ContractDbImporter.norm(o.textContent)))o.selected=true});
   $("documentCompanyName").value=sourceName||$("documentCompanyName").value;
   $("databaseCompanyName").value=supplier;
   $("companyName").value=supplier;
@@ -338,6 +354,8 @@ $("extractBtn").onclick=async()=>{
   renderReview(result);
   const evidenceText=(result.evidence||[]).map(item=>`${item.label||""} ${item.value||""}`).join("\n");
   await runLegalComplianceCheck(documentFiles,evidenceText);
+  setTimeout(()=>renderLegalCompliance(lastComplianceDocumentText),50);
+  setTimeout(()=>renderLegalCompliance(lastComplianceDocumentText),300);
   const found=Object.keys(result.values).length;
   if(!dbAutoMatched)showStatus(`Recupero completato: ${found} campi trovati, ${result.conflicts.length} conflitti da verificare. Nessuna ditta DB riconosciuta automaticamente.`,found?"ok":"error");
 };
