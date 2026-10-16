@@ -372,7 +372,7 @@ function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/$
 // ============================================================
 // WORD DEFINITIVO: doppia verifica marcatore nominativo + giallo
 // ============================================================
-const WORD_GENERATOR_BUILD="word-v9-2026-10-16";
+const WORD_GENERATOR_BUILD="word-v10-direct-document-2026-10-16";
 console.info("Word generator build:",WORD_GENERATOR_BUILD);
 const StrictYellowWordGenerator=(()=>{
   const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -462,20 +462,58 @@ const StrictYellowWordGenerator=(()=>{
     return xml;
   }
   async function generate(file,data){
-    if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[],rawMarkers:0,textMarkers:0,paragraphs:0};
-    const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));
-    if(!paths.length)throw new Error("Il file caricato non contiene la struttura interna di un documento Word DOCX.");
-    for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,process(xml,map,report))}
+    if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");
+    const zip=new PizZip(await file.arrayBuffer());
+    const map=values(data);
+    const report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[],rawMarkers:0,textMarkers:0,paragraphs:0};
+
+    // Elaborazione esplicita del corpo principale. E lo stesso file verificato dalla console.
+    const mainPath="word/document.xml";
+    const mainFile=zip.file(mainPath);
+    if(!mainFile)throw new Error("word/document.xml non trovato nel DOCX.");
+    const mainXml=mainFile.asText();
+    report.rawMarkers=Math.max(0,mainXml.split("{").length-1);
+
+    let updatedXml=mainXml;
+    for(const [key,rawValue] of Object.entries(map)){
+      for(const token of [`{{${key}}}`,`{${key}}}`]){
+        let cursor=0;
+        while(true){
+          const index=updatedXml.indexOf(token,cursor);
+          if(index<0)break;
+          report.textMarkers++;
+          if(!clean(rawValue)){report.noData.push(key);cursor=index+token.length;continue}
+          const runStart=Math.max(updatedXml.lastIndexOf("<w:r ",index),updatedXml.lastIndexOf("<w:r>",index));
+          const runEnd=updatedXml.indexOf("</w:r>",index);
+          const runXml=runStart>=0&&runEnd>index?updatedXml.slice(runStart,runEnd+6):"";
+          const yellow=runXml.includes('w:highlight w:val="yellow"')||runXml.includes("w:highlight w:val='yellow'")||runXml.includes('w:shd w:fill="FFFF00"')||runXml.includes('w:shd w:fill="FFF2CC"');
+          if(!yellow){report.notYellow.push(key);cursor=index+token.length;continue}
+          const value=xmlTextValue(rawValue);
+          updatedXml=updatedXml.slice(0,index)+value+updatedXml.slice(index+token.length);
+          report.replaced.push(key);
+          cursor=index+value.length;
+        }
+      }
+    }
+    zip.file(mainPath,updatedXml);
+
+    // Header e footer vengono elaborati separatamente, senza influire sulla diagnostica del corpo.
+    const secondary=Object.keys(zip.files).filter(n=>/^word\/(header\d+|footer\d+)\.xml$/.test(n));
+    for(const path of secondary){
+      const xml=zip.file(path)?.asText();
+      if(xml)zip.file(path,process(xml,map,report));
+    }
+
     if(!report.replaced.length){
       const details=[];
-      if(report.notYellow.length)details.push(`${report.notYellow.length} marcatori trovati ma non riconosciuti come gialli`);
-      if(report.unknown.length)details.push(`${report.unknown.length} marcatori sconosciuti`);
+      if(report.notYellow.length)details.push(`${report.notYellow.length} marcatori non gialli`);
       if(report.noData.length)details.push(`${report.noData.length} marcatori senza dati`);
-      details.push(`${report.rawMarkers} aperture { presenti nell'XML`);
-      details.push(`${report.textMarkers} marcatori nominativi individuati nell'XML`);
+      details.push(`${report.rawMarkers} aperture { nel document.xml`);
+      details.push(`${report.textMarkers} marcatori nominativi trovati`);
       throw new Error(`[${WORD_GENERATOR_BUILD}] Nessun marcatore compilabile. ${details.join("; ")}.`);
     }
-    const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;
+    const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"});
+    const name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;
     if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}
     return report;
   }
