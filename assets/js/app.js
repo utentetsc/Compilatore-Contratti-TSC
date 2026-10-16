@@ -428,37 +428,42 @@ const StrictYellowWordGenerator=(()=>{
     String(value).split("\n").forEach((part,i)=>{if(i)run.appendChild(run.ownerDocument.createElementNS(W,"w:br"));const t=run.ownerDocument.createElementNS(W,"w:t");t.setAttributeNS(XML,"xml:space","preserve");t.textContent=part;run.appendChild(t)});
   }
   function replace(p,start,end,value){const ts=elementsByLocalName(p,"t");let pos=0,first=null;for(const t of ts){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;if(!first)first=t.parentNode;const l=Math.max(0,start-a),r=Math.min((t.textContent||"").length,end-a);t.textContent=(t.textContent||"").slice(0,l)+(t.textContent||"").slice(r)}if(first)setRun(first,value)}
+  function xmlEscape(value){
+    return String(value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
+  }
+  function xmlTextValue(value){
+    return String(value).split("\n").map(xmlEscape).join('</w:t><w:br/><w:t xml:space="preserve">');
+  }
   function process(xml,map,report){
     report.rawMarkers=(report.rawMarkers||0)+Math.max(0,xml.split("{").length-1);
-    const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("XML Word non leggibile.");
-    const paragraphs=elementsByLocalName(doc,"p");
-    report.paragraphs=(report.paragraphs||0)+paragraphs.length;
-    for(const p of paragraphs){
-      const text=pText(p),matches=[];
-      let scan=0;
-      while(scan<text.length){
-        const start=text.indexOf("{",scan);if(start<0)break;
-        const isDouble=text[start+1]==="{";
-        const openLength=isDouble?2:1;
-        const closeToken=isDouble?"}}":"}";
-        const end=text.indexOf(closeToken,start+openLength);if(end<0)break;
-        const rawKey=text.slice(start+openLength,end).trim();
-        const key=normKey(rawKey);
-        // Accetta solo marcatori nominativi, mai vecchi testi contrattuali tra graffe.
-        if(/^[A-Z0-9_]+$/.test(rawKey)&&key){
-          matches.push({index:start,end:end+closeToken.length,key});
+    const keys=Object.keys(map);
+    for(const key of keys){
+      const candidates=[`{{${key}}}`,`{${key}}}`];
+      for(const token of candidates){
+        let from=0;
+        while(true){
+          const index=xml.indexOf(token,from);if(index<0)break;
+          report.textMarkers=(report.textMarkers||0)+1;
+          const runStart=xml.lastIndexOf("<w:r",index),runEnd=xml.indexOf("</w:r>",index);
+          const runXml=runStart>=0&&runEnd>index?xml.slice(runStart,runEnd+6):"";
+          const yellow=/(?:<w:highlight\\b[^>]*w:val=["'](?:yellow|7)["']|<w:shd\\b[^>]*w:fill=["'](?:FFFF00|FFF2CC)["'])/i.test(runXml);
+          if(!yellow){report.notYellow.push(key);from=index+token.length;continue}
+          if(!clean(map[key])){report.noData.push(key);from=index+token.length;continue}
+          const value=xmlTextValue(map[key]);
+          xml=xml.slice(0,index)+value+xml.slice(index+token.length);
+          report.replaced.push(key);from=index+value.length;
         }
-        scan=end+closeToken.length;
       }
-      report.textMarkers=(report.textMarkers||0)+matches.length;
-      for(const m of matches.reverse()){
-        const key=m.key,valid=Object.prototype.hasOwnProperty.call(map,key),yellow=markerIsYellow(p,m.index,m.end);
-        if(!valid){report.unknown.push(key);continue} if(!yellow){report.notYellow.push(key);continue}
-        if(!clean(map[key])){report.noData.push(key);continue} replace(p,m.index,m.end,map[key]);report.replaced.push(key);
-      }
-      const yellowRuns=elementsByLocalName(p,"r").filter(isYellowRun);for(const r of yellowRuns){const rt=[...r.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("");if(rt&&!rt.includes("{")&&text.includes("{"))report.yellowWithoutMarker.push(rt.slice(0,60))}
     }
-    return new XMLSerializer().serializeToString(doc);
+    // Rileva marcatori nominativi non previsti dalla mappa senza usare il DOM.
+    let scan=0;
+    while(scan<xml.length){
+      const a=xml.indexOf("{",scan);if(a<0)break;const dbl=xml[a+1]==="{";const close=dbl?"}}":"}";const b=xml.indexOf(close,a+(dbl?2:1));if(b<0)break;
+      const rawKey=xml.slice(a+(dbl?2:1),b).trim();
+      if(/^[A-Z0-9_]+$/.test(rawKey)&&!Object.prototype.hasOwnProperty.call(map,rawKey))report.unknown.push(rawKey);
+      scan=b+close.length;
+    }
+    return xml;
   }
   async function generate(file,data){
     if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[],rawMarkers:0,textMarkers:0,paragraphs:0};
@@ -471,8 +476,7 @@ const StrictYellowWordGenerator=(()=>{
       if(report.unknown.length)details.push(`${report.unknown.length} marcatori sconosciuti`);
       if(report.noData.length)details.push(`${report.noData.length} marcatori senza dati`);
       details.push(`${report.rawMarkers} aperture { presenti nell'XML`);
-      details.push(`${report.textMarkers} marcatori ricostruiti dal testo`);
-      details.push(`${report.paragraphs} paragrafi analizzati`);
+      details.push(`${report.textMarkers} marcatori nominativi individuati nell'XML`);
       throw new Error(`Nessun marcatore compilabile. ${details.join("; ")}.`);
     }
     const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;
