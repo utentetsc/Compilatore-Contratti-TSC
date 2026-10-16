@@ -372,7 +372,7 @@ function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/$
 // ============================================================
 // WORD DEFINITIVO: doppia verifica marcatore nominativo + giallo
 // ============================================================
-const WORD_GENERATOR_BUILD="word-v10-direct-document-2026-10-16";
+const WORD_GENERATOR_BUILD="word-v11-hardcoded-markers-2026-10-16";
 console.info("Word generator build:",WORD_GENERATOR_BUILD);
 const StrictYellowWordGenerator=(()=>{
   const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -473,9 +473,14 @@ const StrictYellowWordGenerator=(()=>{
     if(!mainFile)throw new Error("word/document.xml non trovato nel DOCX.");
     const mainXml=mainFile.asText();
     report.rawMarkers=Math.max(0,mainXml.split("{").length-1);
+    report.oggettoExact=mainXml.includes("{OGGETTO_CONTRATTO}");
 
     let updatedXml=mainXml;
-    for(const [key,rawValue] of Object.entries(map)){
+    const markerKeys=["OGGETTO_CONTRATTO","DATA_CONTRATTO","ANAGRAFICA_COMPLETA_APPALTATORE","DESCRIZIONE_LAVORAZIONI","POSIZIONE_INPS","ELENCO_LAVORAZIONI","DATI_POLIZZA","MASSIMALE","IMPORTO_CONTRATTO","COSTI_SICUREZZA","TARIFFE_STRAORDINARIE","DURATA_CONTRATTO","DATA_INIZIO","RECAPITI_APPALTATORE","CITTA_FIRMA","RAGIONE_SOCIALE","LEGALE_RAPPRESENTANTE"];
+    report.mapKeys=Object.keys(map);
+    report.markerKeys=markerKeys;
+    for(const key of markerKeys){
+      const rawValue=map[key]??"";
       for(const token of [`{{${key}}}`,`{${key}}}`]){
         let cursor=0;
         while(true){
@@ -510,6 +515,8 @@ const StrictYellowWordGenerator=(()=>{
       if(report.noData.length)details.push(`${report.noData.length} marcatori senza dati`);
       details.push(`${report.rawMarkers} aperture { nel document.xml`);
       details.push(`${report.textMarkers} marcatori nominativi trovati`);
+      details.push(`OGGETTO esatto: ${report.oggettoExact}`);
+      details.push(`mappa: ${report.mapKeys?.length||0} chiavi`);
       throw new Error(`[${WORD_GENERATOR_BUILD}] Nessun marcatore compilabile. ${details.join("; ")}.`);
     }
     const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"});
