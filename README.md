@@ -43,3 +43,12 @@ Personalizzare il parser con visure, polizze e altri documenti reali, aggiungend
 
 ### Correzione Word v12
 Il master incluso nella cartella `templates` contiene 17 marcatori nominativi reali, ciascuno in un singolo run Word evidenziato in giallo. La generazione non tenta più di interpretare come marcatori i vecchi testi racchiusi tra parentesi graffe.
+
+
+### Versione 0.4.0 - Aree Gialle v4
+- ripristinato il generatore basato esclusivamente sulle evidenziazioni gialle;
+- eliminato il generatore a graffe e marcatori nominativi;
+- integrato il master originale senza marcatori;
+- lavorazioni distribuite nei paragrafi originali;
+- campi obbligatori mancanti indicati con `[DA COMPILARE]`;
+- firma e recapiti gestiti separatamente.

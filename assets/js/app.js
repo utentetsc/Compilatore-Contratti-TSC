@@ -370,167 +370,21 @@ function value(id){return $(id).value.trim()}
 function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/${m}/${y}`}
 
 // ============================================================
-// WORD DEFINITIVO: doppia verifica marcatore nominativo + giallo
+// WORD AREE GIALLE V4: nessuna graffa e nessun marcatore.
+// Il motore e separato in assets/js/yellow-word-generator.js.
 // ============================================================
-const WORD_GENERATOR_BUILD="word-v12-named-master-2026-10-16";
-console.info("Word generator build:",WORD_GENERATOR_BUILD);
-const StrictYellowWordGenerator=(()=>{
-  const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-  const XML="http://www.w3.org/XML/1998/namespace";
-  const clean=v=>String(v??"").trim();
-  const normKey=v=>String(v||"").trim().toUpperCase().replace(/[^A-Z0-9_]/g,"");
-  const money=v=>{const n=Number(String(v||"").replace(/\./g,"").replace(",","."));return Number.isFinite(n)?n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2}):clean(v)};
-  const city=v=>{const t=clean(v);let m=t.match(/\b\d{5}\s+([A-Za-zÀ-ÿ' ]+?)(?:\s+(?:Appaltatore|Esecutori)|\s*[-–,]|$)/i);if(m)return clean(m[1]);m=t.match(/,\s*([A-Za-zÀ-ÿ' ]+?)(?:\s*\([A-Z]{2}\))?(?:,|$)/);return m?clean(m[1]):""};
-  const years=(a,b)=>{if(!a||!b)return"";const parse=x=>{const p=String(x).split(/[\/-]/).map(Number);return p[0]>31?new Date(p[0],p[1]-1,p[2]):new Date(p[2],p[1]-1,p[0])};const x=parse(a),y=parse(b);if(isNaN(x)||isNaN(y))return"";const m=(y.getFullYear()-x.getFullYear())*12+y.getMonth()-x.getMonth()+(y.getDate()>=x.getDate()?1:0);return m%12===0?`${m/12} ${m/12===1?"anno":"anni"}`:`${m} mesi`};
-  function values(data){
-    const company=clean(data.RAGIONE_SOCIALE||data.DENOMINAZIONE_DB||data.DITTA), works=clean(data.TIPOLOGIE_LAVORAZIONE);
-    const list=works.split(/,\s*/).filter(Boolean).map((x,i)=>`${String.fromCharCode(97+i)}) ${x};`).join("\n");
-    return {
-      OGGETTO_CONTRATTO:works.toUpperCase(), DATA_CONTRATTO:clean(data.DATA_CONTRATTO),
-      ANAGRAFICA_COMPLETA_APPALTATORE:company?`${company}, con sede legale in ${clean(data.SEDE_LEGALE)}, P. IVA ${clean(data.PARTITA_IVA)} e C.F. ${clean(data.CODICE_FISCALE)}, R.E.A. n. ${clean(data.REA)}, in persona di ${clean(data.LEGALE_RAPPRESENTANTE)},`:"",
-      DESCRIZIONE_LAVORAZIONI:works?`della conduzione e manutenzione di ${works}`:"", POSIZIONE_INPS:clean(data.POSIZIONE_INPS), ELENCO_LAVORAZIONI:list,
-      DATI_POLIZZA:[clean(data.COMPAGNIA_ASSICURATIVA),clean(data.NUMERO_POLIZZA)&&`polizza assicurativa n° ${clean(data.NUMERO_POLIZZA)}`].filter(Boolean).join("\n"),
-      MASSIMALE:clean(data.MASSIMALE)&&money(data.MASSIMALE), IMPORTO_CONTRATTO:clean(data.IMPORTO_CONTRATTO)&&`Euro ${money(data.IMPORTO_CONTRATTO)}`,
-      COSTI_SICUREZZA:clean(data.COSTI_SICUREZZA), TARIFFE_STRAORDINARIE:clean(data.TARIFFE_STRAORDINARIE),
-      DURATA_CONTRATTO:years(data.DATA_INIZIO,data.DATA_FINE), DATA_INIZIO:clean(data.DATA_INIZIO),
-      RECAPITI_APPALTATORE:[company,clean(data.SEDE_LEGALE),clean(data.EMAIL)&&`E-mail: ${clean(data.EMAIL)}`,clean(data.PEC)&&`PEC: ${clean(data.PEC)}`,clean(data.TELEFONO)&&`Tel.: ${clean(data.TELEFONO)}`].filter(Boolean).join("\n"),
-      CITTA_FIRMA:city(data.SEDE_LEGALE), RAGIONE_SOCIALE:company, LEGALE_RAPPRESENTANTE:clean(data.LEGALE_RAPPRESENTANTE)
-    };
-  }
-  function elementsByLocalName(root,name){
-    return [...root.getElementsByTagName("*")].filter(node=>node.localName===name||node.nodeName===`w:${name}`);
-  }
-  function pText(p){return elementsByLocalName(p,"t").map(t=>t.textContent||"").join("")}
-  function isYellowRun(run){
-    if(!run)return false;
-    // Browser diversi espongono gli attributi OOXML con modalità differenti.
-    const xml=new XMLSerializer().serializeToString(run).toLowerCase();
-    if(/<(?:w:)?highlight\b[^>]*(?:w:)?val=["'](?:yellow|7)["']/.test(xml))return true;
-    if(/<(?:w:)?shd\b[^>]*(?:w:)?fill=["'](?:ffff00|fff2cc|yellow)["']/.test(xml))return true;
-    const h=[...run.getElementsByTagNameNS(W,"highlight")][0];
-    const value=h&&(h.getAttributeNS(W,"val")||h.getAttribute("w:val")||h.getAttribute("val"));
-    return ["yellow","7"].includes(String(value||"").toLowerCase());
-  }
-  function markerIsYellow(p,start,end){
-    const ts=elementsByLocalName(p,"t");let pos=0,covered=false,yellow=false;
-    for(const t of ts){
-      const a=pos,b=pos+(t.textContent||"").length;pos=b;
-      if(end<=a||start>=b)continue;
-      covered=true;
-      // Basta che il marcatore appartenga a un'area gialla; Word può spezzarlo in più run.
-      let node=t.parentNode;
-      while(node&&node!==p){if(isYellowRun(node)){yellow=true;break}node=node.parentNode}
-    }
-    if(covered&&yellow)return true;
-    // Ultimo controllo: evidenziazione applicata al paragrafo o a un run contenente il marcatore.
-    return covered&&elementsByLocalName(p,"r").some(isYellowRun);
-  }
-  function setRun(run,value){
-    [...run.childNodes].filter(n=>n.namespaceURI===W&&["t","br","tab"].includes(n.localName)).forEach(n=>run.removeChild(n));
-    String(value).split("\n").forEach((part,i)=>{if(i)run.appendChild(run.ownerDocument.createElementNS(W,"w:br"));const t=run.ownerDocument.createElementNS(W,"w:t");t.setAttributeNS(XML,"xml:space","preserve");t.textContent=part;run.appendChild(t)});
-  }
-  function replace(p,start,end,value){const ts=elementsByLocalName(p,"t");let pos=0,first=null;for(const t of ts){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;if(!first)first=t.parentNode;const l=Math.max(0,start-a),r=Math.min((t.textContent||"").length,end-a);t.textContent=(t.textContent||"").slice(0,l)+(t.textContent||"").slice(r)}if(first)setRun(first,value)}
-  function xmlEscape(value){
-    return String(value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
-  }
-  function xmlTextValue(value){
-    return String(value).split("\n").map(xmlEscape).join('</w:t><w:br/><w:t xml:space="preserve">');
-  }
-  function process(xml,map,report){
-    report.rawMarkers=(report.rawMarkers||0)+Math.max(0,xml.split("{").length-1);
-    for(const [key,rawValue] of Object.entries(map)){
-      const tokens=[`{{${key}}}`,`{${key}}}`];
-      for(const token of tokens){
-        if(!xml.includes(token))continue;
-        report.textMarkers=(report.textMarkers||0)+(xml.split(token).length-1);
-        if(!clean(rawValue)){report.noData.push(key);continue}
-        const value=xmlTextValue(rawValue);
-        let cursor=0;
-        while(true){
-          const index=xml.indexOf(token,cursor);if(index<0)break;
-          // Doppia verifica: il marcatore deve trovarsi nello stesso run Word che contiene il giallo.
-          const runStart=Math.max(xml.lastIndexOf("<w:r ",index),xml.lastIndexOf("<w:r>",index));
-          const runEnd=xml.indexOf("</w:r>",index);
-          const runXml=runStart>=0&&runEnd>index?xml.slice(runStart,runEnd+6):"";
-          const yellow=runXml.includes('w:highlight w:val="yellow"')||runXml.includes("w:highlight w:val='yellow'")||runXml.includes('w:shd w:fill="FFFF00"')||runXml.includes('w:shd w:fill="FFF2CC"');
-          if(!yellow){report.notYellow.push(key);cursor=index+token.length;continue}
-          xml=xml.slice(0,index)+value+xml.slice(index+token.length);
-          report.replaced.push(key);cursor=index+value.length;
-        }
-      }
-    }
-    return xml;
-  }
-  async function generate(file,data){
-    if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");
-    const zip=new PizZip(await file.arrayBuffer());
-    const map=values(data);
-    const report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[],rawMarkers:0,textMarkers:0,paragraphs:0};
-
-    // Elaborazione esplicita del corpo principale. E lo stesso file verificato dalla console.
-    const mainPath="word/document.xml";
-    const mainFile=zip.file(mainPath);
-    if(!mainFile)throw new Error("word/document.xml non trovato nel DOCX.");
-    const mainXml=mainFile.asText();
-    report.rawMarkers=Math.max(0,mainXml.split("{").length-1);
-    report.oggettoExact=mainXml.includes("{OGGETTO_CONTRATTO}");
-
-    let updatedXml=mainXml;
-    const markerKeys=["OGGETTO_CONTRATTO","DATA_CONTRATTO","ANAGRAFICA_COMPLETA_APPALTATORE","DESCRIZIONE_LAVORAZIONI","POSIZIONE_INPS","ELENCO_LAVORAZIONI","DATI_POLIZZA","MASSIMALE","IMPORTO_CONTRATTO","COSTI_SICUREZZA","TARIFFE_STRAORDINARIE","DURATA_CONTRATTO","DATA_INIZIO","RECAPITI_APPALTATORE","CITTA_FIRMA","RAGIONE_SOCIALE","LEGALE_RAPPRESENTANTE"];
-    report.mapKeys=Object.keys(map);
-    report.markerKeys=markerKeys;
-    for(const key of markerKeys){
-      const rawValue=map[key]??"";
-      for(const token of [`{{${key}}}`,`{${key}}}`]){
-        let cursor=0;
-        while(true){
-          const index=updatedXml.indexOf(token,cursor);
-          if(index<0)break;
-          report.textMarkers++;
-          if(!clean(rawValue)){report.noData.push(key);cursor=index+token.length;continue}
-          const runStart=Math.max(updatedXml.lastIndexOf("<w:r ",index),updatedXml.lastIndexOf("<w:r>",index));
-          const runEnd=updatedXml.indexOf("</w:r>",index);
-          const runXml=runStart>=0&&runEnd>index?updatedXml.slice(runStart,runEnd+6):"";
-          const yellow=runXml.includes('w:highlight w:val="yellow"')||runXml.includes("w:highlight w:val='yellow'")||runXml.includes('w:shd w:fill="FFFF00"')||runXml.includes('w:shd w:fill="FFF2CC"');
-          if(!yellow){report.notYellow.push(key);cursor=index+token.length;continue}
-          const value=xmlTextValue(rawValue);
-          updatedXml=updatedXml.slice(0,index)+value+updatedXml.slice(index+token.length);
-          report.replaced.push(key);
-          cursor=index+value.length;
-        }
-      }
-    }
-    zip.file(mainPath,updatedXml);
-
-    // Header e footer vengono elaborati separatamente, senza influire sulla diagnostica del corpo.
-    const secondary=Object.keys(zip.files).filter(n=>/^word\/(header\d+|footer\d+)\.xml$/.test(n));
-    for(const path of secondary){
-      const xml=zip.file(path)?.asText();
-      if(xml)zip.file(path,process(xml,map,report));
-    }
-
-    if(!report.replaced.length){
-      const details=[];
-      if(report.notYellow.length)details.push(`${report.notYellow.length} marcatori non gialli`);
-      if(report.noData.length)details.push(`${report.noData.length} marcatori senza dati`);
-      details.push(`${report.rawMarkers} aperture { nel document.xml`);
-      details.push(`${report.textMarkers} marcatori nominativi trovati`);
-      details.push(`OGGETTO esatto: ${report.oggettoExact}`);
-      details.push(`mappa: ${report.mapKeys?.length||0} chiavi`);
-      throw new Error(`[${WORD_GENERATOR_BUILD}] Nessun marcatore compilabile. ${details.join("; ")}.`);
-    }
-    const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"});
-    const name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;
-    if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}
-    return report;
-  }
-  return {generate};
-})();
-
 function buildData(){const selected=selectedCinemas();const works=selectedWorkTypes();const c=selected[0]||{};const w=works[0]||{};return {
   NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),POSIZIONE_INPS:document.getElementById("inpsPosition")?.value||"",EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||"",COSTI_SICUREZZA:document.getElementById("safetyCosts")?.value||"",TARIFFE_STRAORDINARIE:document.getElementById("extraRates")?.value||"",PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
-$("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");const r=await StrictYellowWordGenerator.generate(masterFile,buildData());const warnings=[r.noData.length&&`${r.noData.length} senza dato`,r.notYellow.length&&`${r.notYellow.length} non gialli`,r.unknown.length&&`${r.unknown.length} sconosciuti`].filter(Boolean).join(", ");showStatus(`Contratto generato: ${r.replaced.length} marcatori compilati${warnings?`. Attenzione: ${warnings}`:""}.`,warnings?"":"ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
+$("generateBtn").onclick=async()=>{
+  try{
+    if(!masterFile)throw new Error("Carica prima il contratto master originale in formato DOCX.");
+    if(!window.YellowAreaWordGenerator)throw new Error("Motore Aree Gialle v4 non disponibile.");
+    const r=await YellowAreaWordGenerator.generate(masterFile,buildData());
+    const warning=r.missing.length?` Attenzione: ${r.missing.length} campi impostati come [DA COMPILARE].`:"";
+    showStatus(`Contratto generato da aree gialle: ${r.replaced} campi compilati.${warning}`,r.missing.length?"":"ok");
+  }catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}
+};
 $("contractDate").value=new Date().toISOString().slice(0,10);renderSetup();renderLegalCompliance();
 showStatus(`Database pronto: ${setup.cinemas.length} cinema, ${setup.workTypes.length} tipologie, ${setup.contracts.length} abbinamenti.`,"ok");
