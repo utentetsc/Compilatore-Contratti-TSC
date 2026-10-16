@@ -84,6 +84,104 @@ $("exportSetup").onclick=()=>{const b=new Blob([JSON.stringify(setup,null,2)],{t
 $("importSetup").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.cinemas)||!Array.isArray(d.workTypes))throw 0;setup=d;StorageService.save(setup);renderSetup()}catch{alert("File di configurazione non valido")}};
 $("resetSetup").onclick=()=>{setup=StorageService.reset();renderSetup()};
 
+
+// ============================================================
+// CONTROLLO PRELIMINARE DI COERENZA CAMERALE
+// Fonti normative: D.M. 37/2008 vigente; ATECO 2025 ISTAT.
+// Il controllo non sostituisce una verifica legale o camerale.
+// ============================================================
+const LEGAL_COMPLIANCE_RULES = [
+  {test:/\b(cabine?\s*mt|elettric|ups|gruppi?\s*elettrogen|fotovolta)/i,letters:["A"],ateco:["43.21"],label:"Impianti elettrici"},
+  {test:/\b(tvcc|antintrusione|antenne?|elettronic|dati|fibra)/i,letters:["B"],ateco:["43.21"],label:"Impianti elettronici e di sicurezza"},
+  {test:/\b(meccanico|cdz|climat|condizion|riscald|refriger)/i,letters:["C"],ateco:["43.22"],label:"Climatizzazione e impianti termici"},
+  {test:/\b(idrico|sanitari|idraul)/i,letters:["D"],ateco:["43.22"],label:"Impianti idrici e sanitari"},
+  {test:/\b(gas|metano)/i,letters:["E"],ateco:["43.22"],label:"Impianti gas"},
+  {test:/\b(ascensor|montacarich|scale mobili|sollevamento persone)/i,letters:["F"],ateco:["43.24"],label:"Impianti di sollevamento"},
+  {test:/\b(estintor|manichette|evacuator|rilevazione fumi|sprinkler|efc|antincendio|lame d['’]?acqua)/i,letters:["G"],ateco:["43.22"],label:"Protezione antincendio"}
+];
+let lastComplianceDocumentText="";
+
+function complianceNorm(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim()}
+function findAtecoCodes(text){
+  const out=new Set();
+  const re=/\b(?:ateco(?:\s+primario|\s+prevalente|\s+secondario)?\s*[:\-]?\s*)?(\d{2}(?:[.\s]\d{1,2}){1,3})\b/gi;
+  let m; while((m=re.exec(text))) out.add(m[1].replace(/\s+/g,"."));
+  return [...out];
+}
+function findDm37Letters(text){
+  const t=complianceNorm(text).toUpperCase();
+  const letters=new Set();
+  const zones=[];
+  const patterns=[/D\.?\s*M\.?\s*37\s*\/\s*2008[\s\S]{0,900}/g,/ABILITAT[AOI E]*[\s\S]{0,900}/g,/LETTER[AE][\s\S]{0,500}/g];
+  for(const re of patterns){let m;while((m=re.exec(t)))zones.push(m[0])}
+  for(const zone of zones){
+    let m;
+    const explicit=/(?:LETTER[AE]?|ABILITAZION[EI]?|LIMITATAMENTE)\s*(?:DI CUI[^A-G]{0,80})?[:\-]?\s*([A-G](?:\s*[,;\/-]?\s*[A-G])*)/g;
+    while((m=explicit.exec(zone))){for(const x of m[1].match(/[A-G]/g)||[])letters.add(x)}
+    const article=/ART(?:ICOLO)?\.?\s*1[^A-G]{0,120}LETTER[AE]?\s*([A-G])/g;
+    while((m=article.exec(zone)))letters.add(m[1]);
+  }
+  return [...letters].sort();
+}
+async function extractComplianceText(files){
+  const chunks=[];
+  for(const file of files||[]){
+    try{
+      if(/\.pdf$/i.test(file.name)&&typeof pdfjsLib!=="undefined"){
+        const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+        for(let i=1;i<=pdf.numPages;i++){
+          const content=await (await pdf.getPage(i)).getTextContent();
+          chunks.push(content.items.map(x=>x.str).join(" "));
+        }
+      }else if(/\.(txt|csv)$/i.test(file.name)) chunks.push(await file.text());
+    }catch(err){console.warn("Verifica camerale: testo non leggibile",file.name,err)}
+  }
+  return chunks.join("\n");
+}
+function ensureCompliancePanel(){
+  let panel=document.getElementById("legalCompliancePanel");
+  if(panel)return panel;
+  panel=document.createElement("section");panel.id="legalCompliancePanel";
+  panel.style.cssText="margin-top:16px;padding:16px;border:1px solid #cbd5e1;border-left:5px solid #2563eb;border-radius:8px;background:#f8fafc";
+  const anchor=document.getElementById("dbMatchSummary")||document.getElementById("reviewPanel")||document.getElementById("status");
+  (anchor?.parentElement||document.body).appendChild(panel);
+  return panel;
+}
+function renderLegalCompliance(text=lastComplianceDocumentText){
+  const panel=ensureCompliancePanel();
+  const works=selectedWorkTypes();
+  if(!works.length){panel.innerHTML='<h3>Verifica camerale delle lavorazioni</h3><p>La verifica partirà dopo la selezione delle tipologie di lavorazione.</p>';return}
+  const normalized=complianceNorm(text);
+  const letters=findDm37Letters(normalized),ateco=findAtecoCodes(normalized);
+  const rows=[];
+  for(const work of works){
+    const rule=LEGAL_COMPLIANCE_RULES.find(r=>r.test.test(work.name));
+    if(!rule){
+      rows.push({name:work.name,status:"review",title:"Verifica manuale",detail:"Nessuna regola automatica univoca. Verificare l’attività dichiarata in visura e l’eventuale normativa speciale."});continue;
+    }
+    const foundLetters=rule.letters.filter(x=>letters.includes(x));
+    const foundAteco=ateco.filter(code=>rule.ateco.some(prefix=>code.startsWith(prefix)));
+    if(foundLetters.length===rule.letters.length){
+      rows.push({name:work.name,status:"ok",title:"Abilitazione rilevata",detail:`D.M. 37/2008: lettera ${rule.letters.join("/")} rilevata${foundAteco.length?`; ATECO coerente: ${foundAteco.join(", ")}`:". Codice ATECO non determinante ai fini dell’abilitazione."}`});
+    }else if(foundAteco.length){
+      rows.push({name:work.name,status:"review",title:"ATECO coerente, abilitazione da verificare",detail:`Rilevato ${foundAteco.join(", ")}; non è stata individuata con certezza la lettera ${rule.letters.join("/")} del D.M. 37/2008.`});
+    }else{
+      rows.push({name:work.name,status:"missing",title:"Requisito non rilevato",detail:`Nei documenti caricati non è stata individuata la lettera ${rule.letters.join("/")} del D.M. 37/2008 né un indicatore ATECO ${rule.ateco.join("/")}.`});
+    }
+  }
+  const counts={ok:rows.filter(x=>x.status==="ok").length,review:rows.filter(x=>x.status==="review").length,missing:rows.filter(x=>x.status==="missing").length};
+  const color={ok:"#15803d",review:"#b45309",missing:"#b91c1c"},icon={ok:"✓",review:"⚠",missing:"✕"};
+  panel.innerHTML=`<h3 style="margin:0 0 8px">Verifica camerale delle lavorazioni</h3>
+    <p style="margin:0 0 12px"><b>Esito preliminare:</b> ${counts.ok} compatibili, ${counts.review} da verificare, ${counts.missing} requisiti non rilevati.</p>
+    ${rows.map(r=>`<div style="padding:10px 0;border-top:1px solid #e2e8f0"><b style="color:${color[r.status]}">${icon[r.status]} ${esc(r.name)} — ${r.title}</b><br><span>${esc(r.detail)}</span></div>`).join("")}
+    <details style="margin-top:10px"><summary>Dati camerali individuati</summary><p>Lettere D.M. 37/2008: <b>${letters.join(", ")||"nessuna individuata"}</b><br>Codici ATECO: <b>${ateco.join(", ")||"nessuno individuato"}</b></p></details>
+    <p style="font-size:12px;margin:12px 0 0;color:#475569">Controllo preliminare documentale. L’ATECO è un indicatore di coerenza, non sostituisce l’abilitazione camerale. Verificare visura aggiornata, attività esercitata, lettere D.M. 37/2008 ed eventuali requisiti speciali.</p>`;
+}
+async function runLegalComplianceCheck(files){
+  lastComplianceDocumentText=await extractComplianceText(files);
+  renderLegalCompliance(lastComplianceDocumentText);
+}
+
 function selectedWorkTypes(){return [...$("workSelect").selectedOptions].map(o=>setup.workTypes.find(x=>x.id===o.value)).filter(Boolean)}
 function updateWorkSummary(){const list=selectedWorkTypes();$("workSelectionSummary").textContent=list.length?`${list.length} tipologie: ${list.map(x=>x.name).join(", ")}`:"Nessuna tipologia selezionata"}
 function selectedCinemas(){return [...$("cinemaSelect").selectedOptions].map(o=>setup.cinemas.find(x=>x.id===o.value)).filter(Boolean)}
@@ -167,7 +265,7 @@ document.addEventListener("click",e=>{
   applySupplierChoice(btn.dataset.supplier,Number(btn.dataset.score),$("documentCompanyName").value);
 });
 $("cinemaSelect").addEventListener("change",applyContractSuggestion);
-$("workSelect").addEventListener("change",applyContractSuggestion);
+$("workSelect").addEventListener("change",()=>{applyContractSuggestion();renderLegalCompliance();});
 $("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const status=$("contractDbStatus");try{status.textContent="Importazione in corso...";status.className="status";const contracts=await ContractDbImporter.read(file);setup.contracts=contracts;setup.workTypes=ContractDbImporter.workTypes(contracts);syncCinemasFromContracts();StorageService.save(setup);renderSetup();status.textContent=`Database importato: ${contracts.length} abbinamenti e ${setup.workTypes.length} tipologie.`;status.className="status ok"}catch(err){console.error(err);status.textContent=err.message||"Errore durante l'importazione.";status.className="status error"}finally{e.target.value=""}};
 
 $("extractBtn").onclick=async()=>{
@@ -180,6 +278,7 @@ $("extractBtn").onclick=async()=>{
   $("documentCompanyName").value=result.values.companyName||$("companyName").value;
   const dbAutoMatched=autoSelectFromCompany();
   renderReview(result);
+  await runLegalComplianceCheck(documentFiles);
   const found=Object.keys(result.values).length;
   if(!dbAutoMatched)showStatus(`Recupero completato: ${found} campi trovati, ${result.conflicts.length} conflitti da verificare. Nessuna ditta DB riconosciuta automaticamente.`,found?"ok":"error");
 };
@@ -197,5 +296,5 @@ function buildData(){const selected=selectedCinemas();const works=selectedWorkTy
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
 $("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");await DocumentGenerator.generate(masterFile,buildData());showStatus("Contratto generato correttamente.","ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
-$("contractDate").value=new Date().toISOString().slice(0,10);renderSetup();
+$("contractDate").value=new Date().toISOString().slice(0,10);renderSetup();renderLegalCompliance();
 showStatus(`Database pronto: ${setup.cinemas.length} cinema, ${setup.workTypes.length} tipologie, ${setup.contracts.length} abbinamenti.`,"ok");
