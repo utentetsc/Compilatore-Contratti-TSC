@@ -372,6 +372,8 @@ function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/$
 // ============================================================
 // WORD DEFINITIVO: doppia verifica marcatore nominativo + giallo
 // ============================================================
+const WORD_GENERATOR_BUILD="word-v8-2026-10-16";
+console.info("Word generator build:",WORD_GENERATOR_BUILD);
 const StrictYellowWordGenerator=(()=>{
   const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
   const XML="http://www.w3.org/XML/1998/namespace";
@@ -438,13 +440,18 @@ const StrictYellowWordGenerator=(()=>{
     report.rawMarkers=(report.rawMarkers||0)+Math.max(0,xml.split("{").length-1);
     const keys=Object.keys(map);
     for(const key of keys){
-      const candidates=[`{{${key}}}`,`{${key}}}`];
+      const candidates=[
+        `{{${key}}}`,`{${key}}}`,
+        `&#123;&#123;${key}&#125;&#125;`,`&#123;${key}&#125;`,
+        `&#x7B;&#x7B;${key}&#x7D;&#x7D;`,`&#x7B;${key}&#x7D;`
+      ];
       for(const token of candidates){
         let from=0;
         while(true){
           const index=xml.indexOf(token,from);if(index<0)break;
           report.textMarkers=(report.textMarkers||0)+1;
-          const runStart=xml.lastIndexOf("<w:r",index),runEnd=xml.indexOf("</w:r>",index);
+          const runStarts=[xml.lastIndexOf("<w:r ",index),xml.lastIndexOf("<w:r>",index)].filter(v=>v>=0);
+          const runStart=runStarts.length?Math.max(...runStarts):-1,runEnd=xml.indexOf("</w:r>",index);
           const runXml=runStart>=0&&runEnd>index?xml.slice(runStart,runEnd+6):"";
           const yellow=/(?:<w:highlight\\b[^>]*w:val=["'](?:yellow|7)["']|<w:shd\\b[^>]*w:fill=["'](?:FFFF00|FFF2CC)["'])/i.test(runXml);
           if(!yellow){report.notYellow.push(key);from=index+token.length;continue}
@@ -477,7 +484,7 @@ const StrictYellowWordGenerator=(()=>{
       if(report.noData.length)details.push(`${report.noData.length} marcatori senza dati`);
       details.push(`${report.rawMarkers} aperture { presenti nell'XML`);
       details.push(`${report.textMarkers} marcatori nominativi individuati nell'XML`);
-      throw new Error(`Nessun marcatore compilabile. ${details.join("; ")}.`);
+      throw new Error(`[${WORD_GENERATOR_BUILD}] Nessun marcatore compilabile. ${details.join("; ")}.`);
     }
     const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;
     if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}
