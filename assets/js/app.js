@@ -109,13 +109,7 @@ function normalizeSupplierName(v){
     .replace(/\b(srl|s r l|spa|s p a|snc|sas|sapa|soc coop|cooperativa)\b/g," ")
     .replace(/\s+/g," ").trim();
 }
-function canonicalSupplierName(v){
-  return normalizeSupplierName(v)
-    .replace(/[^a-z0-9]/g,"")
-    // Gestisce anche la forma della PEC: NOMEDITTASRL@PEC.IT, senza spazi prima del suffisso.
-    .replace(/(srl|spa|snc|sas|sapa|soccoop|cooperativa)$/g,"");
-}
-function compactName(v){return canonicalSupplierName(v)}
+function compactName(v){return normalizeSupplierName(v).replace(/\s+/g,"")}
 function levenshtein(a,b){
   a=compactName(a);b=compactName(b);if(!a||!b)return Math.max(a.length,b.length);
   const row=Array.from({length:b.length+1},(_,i)=>i);
@@ -123,20 +117,15 @@ function levenshtein(a,b){
   return row[b.length];
 }
 function supplierScore(documentName,dbName){
-  const a=normalizeSupplierName(documentName),b=normalizeSupplierName(dbName),ac=canonicalSupplierName(a),bc=canonicalSupplierName(b);
-  if(!ac||!bc)return 0;
-  if(ac===bc)return 100;
-  // Consente il riconoscimento di denominazioni troncate dall'OCR e della parte locale della PEC.
-  const shorter=Math.min(ac.length,bc.length),longer=Math.max(ac.length,bc.length);
-  const containment=(ac.includes(bc)||bc.includes(ac))&&shorter>=5
-    ? Math.round(92+6*(shorter/longer))
-    : 0;
-  const edit=1-levenshtein(ac,bc)/longer;
-  const prefix=(()=>{let i=0;while(i<shorter&&ac[i]===bc[i])i++;return i/shorter})();
+  const a=normalizeSupplierName(documentName),b=normalizeSupplierName(dbName),ac=compactName(a),bc=compactName(b);
+  if(!a||!b)return 0;if(ac===bc)return 100;
+  const edit=1-levenshtein(ac,bc)/Math.max(ac.length,bc.length);
   const at=new Set(a.split(" ").filter(x=>x.length>1)),bt=new Set(b.split(" ").filter(x=>x.length>1));
   const inter=[...at].filter(x=>bt.has(x)).length,union=new Set([...at,...bt]).size;
   const token=union?inter/union:0;
-  return Math.round(Math.max(containment,edit*82+token*18,prefix>=0.75?88+10*prefix:0));
+  const containment=(ac.includes(bc)||bc.includes(ac))?0.96:0;
+  const shortCode=(bc.length>=2&&a.split(" ").includes(b))?0.92:0;
+  return Math.round(Math.max(edit*0.72+token*0.28,containment,shortCode)*100);
 }
 function supplierCandidates(company){
   return [...new Set((setup.contracts||[]).map(x=>x.supplier).filter(Boolean))]
@@ -179,7 +168,7 @@ document.addEventListener("click",e=>{
 });
 $("cinemaSelect").addEventListener("change",applyContractSuggestion);
 $("workSelect").addEventListener("change",applyContractSuggestion);
-$("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const status=$("contractDbStatus");try{status.textContent="Importazione in corso...";status.className="status";const contracts=await ContractDbImporter.read(file);setup.contracts=contracts;setup.contractsSource="manual-upload";setup.contractsImportedAt=new Date().toISOString();setup.workTypes=ContractDbImporter.workTypes(contracts);syncCinemasFromContracts();StorageService.save(setup);renderSetup();status.textContent=`Database importato: ${contracts.length} abbinamenti e ${setup.workTypes.length} tipologie.`;status.className="status ok"}catch(err){console.error(err);status.textContent=err.message||"Errore durante l'importazione.";status.className="status error"}finally{e.target.value=""}};
+$("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const status=$("contractDbStatus");try{status.textContent="Importazione in corso...";status.className="status";const contracts=await ContractDbImporter.read(file);setup.contracts=contracts;setup.workTypes=ContractDbImporter.workTypes(contracts);syncCinemasFromContracts();StorageService.save(setup);renderSetup();status.textContent=`Database importato: ${contracts.length} abbinamenti e ${setup.workTypes.length} tipologie.`;status.className="status ok"}catch(err){console.error(err);status.textContent=err.message||"Errore durante l'importazione.";status.className="status error"}finally{e.target.value=""}};
 
 $("extractBtn").onclick=async()=>{
   if(!supportFiles.length){showStatus("Carica prima almeno un documento.","error");return}
