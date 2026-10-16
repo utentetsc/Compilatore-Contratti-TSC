@@ -372,7 +372,7 @@ function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/$
 // ============================================================
 // WORD DEFINITIVO: doppia verifica marcatore nominativo + giallo
 // ============================================================
-const WORD_GENERATOR_BUILD="word-v11-hardcoded-markers-2026-10-16";
+const WORD_GENERATOR_BUILD="word-v12-named-master-2026-10-16";
 console.info("Word generator build:",WORD_GENERATOR_BUILD);
 const StrictYellowWordGenerator=(()=>{
   const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";

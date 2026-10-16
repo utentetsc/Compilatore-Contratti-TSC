@@ -40,3 +40,6 @@ Personalizzare il parser con visure, polizze e altri documenti reali, aggiungend
 - Il recupero dal DB parte soltanto dopo il completamento effettivo della lettura documentale.
 - Dopo il matching vengono caricati esclusivamente cinema e lavorazioni della ditta riconosciuta.
 - Ditta, frequenze e importo complessivo vengono compilati dal DB.
+
+### Correzione Word v12
+Il master incluso nella cartella `templates` contiene 17 marcatori nominativi reali, ciascuno in un singolo run Word evidenziato in giallo. La generazione non tenta più di interpretare come marcatori i vecchi testi racchiusi tra parentesi graffe.
