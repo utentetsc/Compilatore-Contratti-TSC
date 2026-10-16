@@ -370,174 +370,67 @@ function value(id){return $(id).value.trim()}
 function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/${m}/${y}`}
 
 // ============================================================
-// GENERATORE WORD A LAYOUT INVARIATO
-// Modifica soltanto i nodi di testo racchiusi tra { } e conserva
-// struttura OOXML, sezioni, margini, font, tabelle, header/footer.
+// WORD DEFINITIVO: doppia verifica marcatore nominativo + giallo
 // ============================================================
-const LayoutPreservingWordGenerator=(()=>{
+const StrictYellowWordGenerator=(()=>{
   const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
   const XML="http://www.w3.org/XML/1998/namespace";
-  const escFile=v=>String(v||"contratto").replace(/[\\/:*?"<>|]+/g,"-").trim();
-  const norm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();
-  const clean=v=>String(v??"").replace(/\s+/g," ").trim();
+  const clean=v=>String(v??"").trim();
+  const normKey=v=>String(v||"").trim().toUpperCase().replace(/[^A-Z0-9_]/g,"");
   const money=v=>{const n=Number(String(v||"").replace(/\./g,"").replace(",","."));return Number.isFinite(n)?n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2}):clean(v)};
-  const cityFromAddress=v=>{
-    const text=clean(v);let m=text.match(/\b\d{5}\s+([A-Za-zÀ-ÿ' ]+?)(?:\s+(?:Appaltatore|Esecutori|$)|\s*[-–,])/i);
-    if(m)return clean(m[1]);
-    m=text.match(/,\s*([A-Za-zÀ-ÿ' ]+?)(?:\s*\([A-Z]{2}\))?(?:\s|$)/);return m?clean(m[1]):"";
-  };
-  const duration=(start,end)=>{
-    if(!start||!end)return "";const parse=x=>{const p=String(x).split(/[\/-]/).map(Number);return p[0]>31?new Date(p[0],p[1]-1,p[2]):new Date(p[2],p[1]-1,p[0])};
-    const a=parse(start),b=parse(end);if(isNaN(a)||isNaN(b))return "";let months=(b.getFullYear()-a.getFullYear())*12+b.getMonth()-a.getMonth();if(b.getDate()>=a.getDate())months++;return months&&months%12===0?`${months/12} (${months/12===1?"uno":"due"}) anni`:`${months} mesi`;
-  };
-  function paragraphText(p){return [...p.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("")}
-  function ensureYellow(run){
-    let rPr=[...run.childNodes].find(n=>n.namespaceURI===W&&n.localName==="rPr");
-    if(!rPr){rPr=run.ownerDocument.createElementNS(W,"w:rPr");run.insertBefore(rPr,run.firstChild)}
-    let h=[...rPr.childNodes].find(n=>n.namespaceURI===W&&n.localName==="highlight");
-    if(!h){h=run.ownerDocument.createElementNS(W,"w:highlight");rPr.appendChild(h)}h.setAttributeNS(W,"w:val","yellow");
+  const city=v=>{const t=clean(v);let m=t.match(/\b\d{5}\s+([A-Za-zÀ-ÿ' ]+?)(?:\s+(?:Appaltatore|Esecutori)|\s*[-–,]|$)/i);if(m)return clean(m[1]);m=t.match(/,\s*([A-Za-zÀ-ÿ' ]+?)(?:\s*\([A-Z]{2}\))?(?:,|$)/);return m?clean(m[1]):""};
+  const years=(a,b)=>{if(!a||!b)return"";const parse=x=>{const p=String(x).split(/[\/-]/).map(Number);return p[0]>31?new Date(p[0],p[1]-1,p[2]):new Date(p[2],p[1]-1,p[0])};const x=parse(a),y=parse(b);if(isNaN(x)||isNaN(y))return"";const m=(y.getFullYear()-x.getFullYear())*12+y.getMonth()-x.getMonth()+(y.getDate()>=x.getDate()?1:0);return m%12===0?`${m/12} ${m/12===1?"anno":"anni"}`:`${m} mesi`};
+  function values(data){
+    const company=clean(data.RAGIONE_SOCIALE||data.DENOMINAZIONE_DB||data.DITTA), works=clean(data.TIPOLOGIE_LAVORAZIONE);
+    const list=works.split(/,\s*/).filter(Boolean).map((x,i)=>`${String.fromCharCode(97+i)}) ${x};`).join("\n");
+    return {
+      OGGETTO_CONTRATTO:works.toUpperCase(), DATA_CONTRATTO:clean(data.DATA_CONTRATTO),
+      ANAGRAFICA_COMPLETA_APPALTATORE:company?`${company}, con sede legale in ${clean(data.SEDE_LEGALE)}, P. IVA ${clean(data.PARTITA_IVA)} e C.F. ${clean(data.CODICE_FISCALE)}, R.E.A. n. ${clean(data.REA)}, in persona di ${clean(data.LEGALE_RAPPRESENTANTE)},`:"",
+      DESCRIZIONE_LAVORAZIONI:works?`della conduzione e manutenzione di ${works}`:"", POSIZIONE_INPS:clean(data.POSIZIONE_INPS), ELENCO_LAVORAZIONI:list,
+      DATI_POLIZZA:[clean(data.COMPAGNIA_ASSICURATIVA),clean(data.NUMERO_POLIZZA)&&`polizza assicurativa n° ${clean(data.NUMERO_POLIZZA)}`].filter(Boolean).join("\n"),
+      MASSIMALE:clean(data.MASSIMALE)&&money(data.MASSIMALE), IMPORTO_CONTRATTO:clean(data.IMPORTO_CONTRATTO)&&`Euro ${money(data.IMPORTO_CONTRATTO)}`,
+      COSTI_SICUREZZA:clean(data.COSTI_SICUREZZA), TARIFFE_STRAORDINARIE:clean(data.TARIFFE_STRAORDINARIE),
+      DURATA_CONTRATTO:years(data.DATA_INIZIO,data.DATA_FINE), DATA_INIZIO:clean(data.DATA_INIZIO),
+      RECAPITI_APPALTATORE:[company,clean(data.SEDE_LEGALE),clean(data.EMAIL)&&`E-mail: ${clean(data.EMAIL)}`,clean(data.PEC)&&`PEC: ${clean(data.PEC)}`,clean(data.TELEFONO)&&`Tel.: ${clean(data.TELEFONO)}`].filter(Boolean).join("\n"),
+      CITTA_FIRMA:city(data.SEDE_LEGALE), RAGIONE_SOCIALE:company, LEGALE_RAPPRESENTANTE:clean(data.LEGALE_RAPPRESENTANTE)
+    };
   }
-  function setRunValue(run,value){
-    ensureYellow(run);
+  function pText(p){return [...p.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("")}
+  function isYellowRun(run){const h=[...run.getElementsByTagNameNS(W,"highlight")][0];return !!h&&["yellow","7"].includes(String(h.getAttributeNS(W,"val")||h.getAttribute("w:val")||"").toLowerCase())}
+  function markerIsYellow(p,start,end){const ts=[...p.getElementsByTagNameNS(W,"t")];let pos=0,covered=false;for(const t of ts){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;covered=true;if(!isYellowRun(t.parentNode))return false}return covered}
+  function setRun(run,value){
     [...run.childNodes].filter(n=>n.namespaceURI===W&&["t","br","tab"].includes(n.localName)).forEach(n=>run.removeChild(n));
-    const parts=String(value).split("\\n");
-    parts.forEach((part,i)=>{if(i)run.appendChild(run.ownerDocument.createElementNS(W,"w:br"));const t=run.ownerDocument.createElementNS(W,"w:t");t.setAttributeNS(XML,"xml:space","preserve");t.textContent=part;run.appendChild(t)});
+    String(value).split("\n").forEach((part,i)=>{if(i)run.appendChild(run.ownerDocument.createElementNS(W,"w:br"));const t=run.ownerDocument.createElementNS(W,"w:t");t.setAttributeNS(XML,"xml:space","preserve");t.textContent=part;run.appendChild(t)});
   }
-  function replaceRange(p,start,end,value){
-    const nodes=[...p.getElementsByTagNameNS(W,"t")];let pos=0,firstRun=null;
-    for(const t of nodes){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;const run=t.parentNode;if(!firstRun)firstRun=run;const left=Math.max(0,start-a),right=Math.min((t.textContent||"").length,end-a);t.textContent=(t.textContent||"").slice(0,left)+(t.textContent||"").slice(right)}
-    if(firstRun)setRunValue(firstRun,value);
-  }
-  function namedValue(key,data){
-    const k=norm(key).replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").toUpperCase();
-    const aliases={DITTA:"RAGIONE_SOCIALE",APPALTATORE:"RAGIONE_SOCIALE",NOMI_CINEMA:"NOMI_CINEMA",CINEMA:"NOMI_CINEMA",LAVORAZIONI:"TIPOLOGIE_LAVORAZIONE",OGGETTO:"TIPOLOGIE_LAVORAZIONE",IMPORTO:"IMPORTO_CONTRATTO",POLIZZA:"NUMERO_POLIZZA",RAPPRESENTANTE:"LEGALE_RAPPRESENTANTE"};
-    return clean(data[k]??data[aliases[k]||""]??"");
-  }
-  function contextualValue(index,old,data,paragraph=""){
-    const original=clean(old), oldNorm=norm(original), context=norm(paragraph);
-    const works=clean(data.TIPOLOGIE_LAVORAZIONE);
-    const workItems=works.split(/,\s*/).map(clean).filter(Boolean);
-    const company=clean(data.RAGIONE_SOCIALE||data.DENOMINAZIONE_DB||data.DITTA);
-    const workSentence=works?`della conduzione e manutenzione di ${works}`:"";
-    const workList=workItems.length?workItems.map((x,i)=>`${String.fromCharCode(97+i)}) ${x};`).join("\n"):"";
-
-    // Marcatori finali del master: recapiti, luogo e firme.
-    // Sono gestiti prima delle regole sugli impianti per evitare che un nome aziendale
-    // contenente la parola "Impianti" venga scambiato per una tipologia di lavorazione.
-    if(index===13&&company){
-      return [company,clean(data.SEDE_LEGALE),clean(data.EMAIL)&&`E-mail: ${clean(data.EMAIL)}`,clean(data.PEC)&&`PEC: ${clean(data.PEC)}`,clean(data.TELEFONO)&&`Tel.: ${clean(data.TELEFONO)}`,clean(data.REPERIBILITA)&&`Reperibilità: ${clean(data.REPERIBILITA)}`].filter(Boolean).join("\n");
-    }
-    if(index===14)return cityFromAddress(data.SEDE_LEGALE)||original;
-    if(index===15)return company||original;
-    if(index===16)return clean(data.LEGALE_RAPPRESENTANTE)||original;
-
-    // Riconoscimento semantico: non dipende dalla pagina o dall'ordine dei marcatori.
-    if(/impiant|manutenz|condizion|elettric|sicurezza|idrico|tvcc|antintrus|rilevazione fumi/.test(oldNorm)){
-      if(/[a-e]\)|;/.test(original)||original.includes("\n")) return workList||original;
-      if(/conduzione|manutenzione/.test(oldNorm)) return workSentence||original;
-      if(/contratto di appalto|impianti/.test(context)) return works.toUpperCase()||original;
-    }
-    if(/polizza|assicur/.test(oldNorm)||/polizza assicurativa/.test(context)){
-      if(/massimale/.test(context)) return clean(data.MASSIMALE)?money(data.MASSIMALE):original;
-      return [clean(data.COMPAGNIA_ASSICURATIVA),clean(data.NUMERO_POLIZZA)&&`polizza assicurativa n° ${clean(data.NUMERO_POLIZZA)}`].filter(Boolean).join("\n")||original;
-    }
-    if(/inps|posizione previdenziale/.test(context)) return clean(data.POSIZIONE_INPS||data.INPS)||original;
-    if(/corrispettivo|euro/.test(context)&&/euro|\d/.test(oldNorm)&&clean(data.IMPORTO_CONTRATTO)) return `Euro ${money(data.IMPORTO_CONTRATTO)}`;
-    if(/durata/.test(context)&&/ann|mes/.test(oldNorm)) return duration(data.DATA_INIZIO,data.DATA_FINE)||original;
-    if(/decorrere dal|data inizio/.test(context)) return clean(data.DATA_INIZIO)||original;
-    if(/sottoscritto in data/.test(context)) return clean(data.DATA_CONTRATTO)||original;
-    if(/appaltatore/.test(context)&&(/impresa|sede legale|p iva|rea/.test(oldNorm))&&company){
-      return `${company}, con sede legale in ${clean(data.SEDE_LEGALE)}, P. IVA ${clean(data.PARTITA_IVA)} e C.F. ${clean(data.CODICE_FISCALE)}, R.E.A. n. ${clean(data.REA)}, in persona di ${clean(data.LEGALE_RAPPRESENTANTE)},`;
-    }
-    if(/tel|pec|mail|via|sede/.test(oldNorm)&&company){
-      return [company,clean(data.SEDE_LEGALE),clean(data.EMAIL)&&`E-mail: ${clean(data.EMAIL)}`,clean(data.PEC)&&`PEC: ${clean(data.PEC)}`,clean(data.TELEFONO)&&`Tel.: ${clean(data.TELEFONO)}`].filter(Boolean).join("\n");
-    }
-    if(company&&oldNorm.includes(norm(company))) return company;
-    if(/rappresentante|firma/.test(context)&&clean(data.LEGALE_RAPPRESENTANTE)) return clean(data.LEGALE_RAPPRESENTANTE);
-
-    // Compatibilità con il master analizzato, se il testo non offre indizi sufficienti.
-    const fallback=[works.toUpperCase(),clean(data.DATA_CONTRATTO),company,workSentence,clean(data.POSIZIONE_INPS||data.INPS),workList,
-      [clean(data.COMPAGNIA_ASSICURATIVA),clean(data.NUMERO_POLIZZA)&&`polizza assicurativa n° ${clean(data.NUMERO_POLIZZA)}`].filter(Boolean).join("\n"),
-      clean(data.MASSIMALE)&&money(data.MASSIMALE),clean(data.IMPORTO_CONTRATTO)&&`Euro ${money(data.IMPORTO_CONTRATTO)}`,"","",
-      duration(data.DATA_INIZIO,data.DATA_FINE),clean(data.DATA_INIZIO),"",cityFromAddress(data.SEDE_LEGALE),company,clean(data.LEGALE_RAPPRESENTANTE)];
-    return clean(fallback[index])?fallback[index]:original;
-  }
-  function replaceMultiParagraphMarker(paragraphs,startIndex,endIndex,openAt,closeAt,value){
-    const lines=String(value).split("\n");
-    for(let i=startIndex;i<=endIndex;i++){
-      const p=paragraphs[i], text=paragraphText(p);
-      let from=0,to=text.length;
-      if(i===startIndex)from=openAt;
-      if(i===endIndex)to=closeAt+1;
-      const line=lines[i-startIndex]??"";
-      replaceRange(p,from,to,line);
-    }
-    // Eventuali righe aggiuntive vengono aggiunte all'ultimo paragrafo, senza modificare sezioni o margini.
-    if(lines.length>endIndex-startIndex+1){
-      const p=paragraphs[endIndex];
-      const runs=[...p.getElementsByTagNameNS(W,"r")];
-      const run=runs[runs.length-1];
-      if(run)setRunValue(run,[paragraphText(p),...lines.slice(endIndex-startIndex+1)].filter(Boolean).join("\n"));
-    }
-  }
-  function processXml(xml,data){
-    const doc=new DOMParser().parseFromString(xml,"application/xml");
-    if(doc.getElementsByTagName("parsererror").length)throw new Error("Il modello Word contiene XML non leggibile.");
-    let contextualIndex=0;
-    const paragraphs=[...doc.getElementsByTagNameNS(W,"p")];
-    for(let i=0;i<paragraphs.length;i++){
-      const p=paragraphs[i];
-      let text=paragraphText(p);
-
-      // Marcatori che iniziano e terminano nello stesso paragrafo.
-      const same=[...text.matchAll(/\{\{([^{}]+)\}\}|\{([^{}]+)\}/g)];
-      if(same.length){
-        for(const m of same.reverse()){
-          const double=!!m[1],inside=m[1]||m[2]||"";
-          const value=double?namedValue(inside,data):contextualValue(contextualIndex,inside,data,text);
-          if(!double)contextualIndex++;
-          if(value!==inside)replaceRange(p,m.index,m.index+m[0].length,value);
-        }
-        continue;
+  function replace(p,start,end,value){const ts=[...p.getElementsByTagNameNS(W,"t")];let pos=0,first=null;for(const t of ts){const a=pos,b=pos+(t.textContent||"").length;pos=b;if(end<=a||start>=b)continue;if(!first)first=t.parentNode;const l=Math.max(0,start-a),r=Math.min((t.textContent||"").length,end-a);t.textContent=(t.textContent||"").slice(0,l)+(t.textContent||"").slice(r)}if(first)setRun(first,value)}
+  function process(xml,map,report){
+    const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("XML Word non leggibile.");
+    for(const p of [...doc.getElementsByTagNameNS(W,"p")]){
+      const text=pText(p),matches=[...text.matchAll(/\{\{([A-Z0-9_]+)\}\}/g)];
+      for(const m of matches.reverse()){
+        const key=normKey(m[1]),valid=Object.prototype.hasOwnProperty.call(map,key),yellow=markerIsYellow(p,m.index,m.index+m[0].length);
+        if(!valid){report.unknown.push(key);continue} if(!yellow){report.notYellow.push(key);continue}
+        if(!clean(map[key])){report.noData.push(key);continue} replace(p,m.index,m.index+m[0].length,map[key]);report.replaced.push(key);
       }
-
-      // Marcatori estesi su più paragrafi, come il blocco recapiti dell'Appaltatore.
-      const open=text.indexOf("{");
-      if(open<0)continue;
-      let combined=text.slice(open+1),endIndex=-1,closeAt=-1;
-      for(let j=i+1;j<paragraphs.length;j++){
-        const next=paragraphText(paragraphs[j]);
-        const close=next.indexOf("}");
-        combined+="\n"+(close>=0?next.slice(0,close):next);
-        if(close>=0){endIndex=j;closeAt=close;break}
-      }
-      if(endIndex>i){
-        const value=contextualValue(contextualIndex,combined,data,text+" "+combined);
-        contextualIndex++;
-        if(value!==combined)replaceMultiParagraphMarker(paragraphs,i,endIndex,open,closeAt,value);
-        i=endIndex;
-      }
+      const yellowRuns=[...p.getElementsByTagNameNS(W,"r")].filter(isYellowRun);for(const r of yellowRuns){const rt=[...r.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join("");if(rt&& !/\{\{[A-Z0-9_]+\}\}/.test(rt)&&text.includes("{{"))report.yellowWithoutMarker.push(rt.slice(0,60))}
     }
     return new XMLSerializer().serializeToString(doc);
   }
   async function generate(file,data){
-    if(typeof PizZip==="undefined")throw new Error("Libreria PizZip non caricata: controlla gli script della pagina.");
-    const zip=new PizZip(await file.arrayBuffer());
-    const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));
-    for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,processXml(xml,data))}
-    const remaining=paths.reduce((n,path)=>n+((zip.file(path)?.asText().match(/\{\{?[^{}]+\}\}?/g)||[]).length),0);
-    const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"});
-    const name=`${escFile(data.NUMERO_CONTRATTO||"Contratto_compilato")}.docx`;
-    if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-    return {remaining};
+    if(typeof PizZip==="undefined")throw new Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),map=values(data),report={replaced:[],notYellow:[],unknown:[],noData:[],yellowWithoutMarker:[]};
+    const paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n));for(const path of paths){const xml=zip.file(path)?.asText();if(xml)zip.file(path,process(xml,map,report))}
+    if(!report.replaced.length)throw new Error("Nessun marcatore valido e giallo trovato. Usa il master definitivo con marcatori nominativi.");
+    const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;
+    if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}
+    return report;
   }
   return {generate};
 })();
 
 function buildData(){const selected=selectedCinemas();const works=selectedWorkTypes();const c=selected[0]||{};const w=works[0]||{};return {
-  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||document.getElementById("telephone")?.value||"",REPERIBILITA:document.getElementById("availabilityPhone")?.value||"",POSIZIONE_INPS:document.getElementById("inpsPosition")?.value||"",INPS:document.getElementById("inpsPosition")?.value||"",PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
+  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),POSIZIONE_INPS:document.getElementById("inpsPosition")?.value||"",EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||"",COSTI_SICUREZZA:document.getElementById("safetyCosts")?.value||"",TARIFFE_STRAORDINARIE:document.getElementById("extraRates")?.value||"",PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
-$("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");const result=await LayoutPreservingWordGenerator.generate(masterFile,buildData());showStatus(result.remaining?`Contratto generato. ${result.remaining} marcatori sono rimasti evidenziati per verifica manuale.`:"Contratto generato correttamente: impaginazione originale e dati evidenziati in giallo.","ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
+$("generateBtn").onclick=async()=>{try{if(!masterFile)throw new Error("Carica prima un contratto master in formato DOCX.");const r=await StrictYellowWordGenerator.generate(masterFile,buildData());const warnings=[r.noData.length&&`${r.noData.length} senza dato`,r.notYellow.length&&`${r.notYellow.length} non gialli`,r.unknown.length&&`${r.unknown.length} sconosciuti`].filter(Boolean).join(", ");showStatus(`Contratto generato: ${r.replaced.length} marcatori compilati${warnings?`. Attenzione: ${warnings}`:""}.`,warnings?"":"ok")}catch(e){console.error(e);showStatus(e.message||"Errore durante la generazione.","error")}};
 $("contractDate").value=new Date().toISOString().slice(0,10);renderSetup();renderLegalCompliance();
 showStatus(`Database pronto: ${setup.cinemas.length} cinema, ${setup.workTypes.length} tipologie, ${setup.contracts.length} abbinamenti.`,"ok");
