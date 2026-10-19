@@ -331,6 +331,10 @@ function deterministicSupplierMatch(company){
   }).sort((a,b)=>b.score-a.score||b.coverage-a.coverage||a.name.localeCompare(b.name,"it"));
   return ranked[0]?.score>=75?ranked:null;
 }
+function looksLikeOfficialCompanyName(value){
+  const v=cleanDisplayedCompanyName(value);
+  return v.length>=3&&!/^(via|viale|corso|piazza|strada|localita|sede legale|codice fiscale|numero d.iscrizione|dati per duvri)\b/i.test(v);
+}
 function applySupplierRowsDirect(supplier,score,sourceName){
   const rows=embeddedContracts.filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
   if(!rows.length)return false;
@@ -342,10 +346,13 @@ function applySupplierRowsDirect(supplier,score,sourceName){
   $("workSelectionSummary").textContent=`${workNames.length} tipologie: ${workNames.join(", ")}`;
   const frequencies=[...new Set(rows.map(x=>String(x.frequency||"").trim()).filter(Boolean))];
   const total=rows.reduce((sum,x)=>sum+(Number.isFinite(Number(x.amount))?Number(x.amount):0),0);
-  $("documentCompanyName").value=sourceName||supplier;
-  $("databaseCompanyName").value=supplier;
-  if(sourceName)$("companyName").value=sourceName;
-  $("supplier").value=supplier;
+  const official=looksLikeOfficialCompanyName(sourceName)?sourceName:supplier;
+  const dbIsShortAlias=normalizeSupplierName(supplier).split(/\s+/).filter(Boolean).length===1;
+  const displayedDbName=dbIsShortAlias&&looksLikeOfficialCompanyName(official)?official:supplier;
+  $("documentCompanyName").value=official;
+  $("databaseCompanyName").value=displayedDbName;
+  $("companyName").value=official;
+  $("supplier").value=displayedDbName;
   $("frequency").value=frequencies.join(" / ");
   $("contractAmount").value=total.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});
   lastMatchedWorkNames=[...workNames];

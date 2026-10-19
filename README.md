@@ -85,3 +85,25 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - estrazione rafforzata della ragione sociale dai modelli DUVRI;
 - fallback matching tramite dominio e-mail/PEC per alias brevi come ABC;
 - recupero congiunto delle due posizioni INPS.
+
+
+### Versione 0.5.1 - REA generalizzato
+- riconoscimento REA da CCIA, CCIAA, Camera di Commercio, Registro Imprese e Numero REA;
+- supporto dei formati LE 221975, LE-221975 e LE/221975;
+- esclusione di valori numerici privi della sigla provinciale;
+- regola valida per tutte le ditte, senza associazioni dedicate ad ALPHA.
+
+
+### Versione 0.5.2 - Denominazioni, REA e PEC
+- il DB usa esattamente le denominazioni presenti nel nuovo Excel;
+- indirizzi e intestazioni non possono essere ragioni sociali;
+- se la ragione sociale documentale non è valida, viene usata la denominazione completa del DB, mai un alias inventato;
+- REA generalizzato per CCIA/CCIAA e Numero REA;
+- PEC riconosciuta anche quando il testo estratto contiene l'indirizzo senza etichetta separata.
+
+
+### Versione 0.5.3 - Alias DB e denominazioni visualizzate
+- gli alias DB composti da una sola parola, come ABC, restano utilizzati internamente per il matching;
+- nei tre campi visibili viene mostrata la denominazione ufficiale completa recuperata dai documenti;
+- le denominazioni DB già complete restano visualizzate senza modifiche;
+- mantenute le correzioni generali per REA e PEC.

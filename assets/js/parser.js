@@ -37,7 +37,10 @@ const DocumentParser = (() => {
   }
   function normalizeField(field,value){
     value=clean(value);
-    if(field==="companyName")return titleWords(value);
+    if(field==="companyName"){
+      if(/^(via|viale|corso|piazza|strada|localita|sede legale|codice fiscale|numero d.iscrizione|registro imprese|partita iva|dati per duvri)\b/i.test(value))return "";
+      return titleWords(value);
+    }
     if(field==="registeredOffice")return normalizeAddress(value);
     if(field==="legalRepresentative")return titleWords(value.replace(/^sig\.?\s*/i,"").replace(/[•]+/g,""));
     if(field==="email"||field==="pec")return value.toLocaleLowerCase("it-IT");
@@ -48,13 +51,20 @@ const DocumentParser = (() => {
   function extractFromText(text,file){
     const sourceType=documentType(text,file);
     const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
-    if(/(?:CCIAA|VISURA)/i.test(file.name||"")){const fromFile=String(file.name||"").replace(/\.[^.]+$/,"").replace(/\b(?:CCIAA|VISURA)[\s\S]*$/i,"").trim();if(fromFile)add("companyName",fromFile,.995);}
+    for(const re of [/(?:n[°º.]?\s*iscrizione\s+cciaa?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i,/(?:numero\s+rea|r\.?e\.?a\.?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i]){const m=text.match(re);if(m){add("rea",`${m[1].toUpperCase()}-${m[2]}`,.999);break}}
+    // Registro Imprese / REA: supporta CCIA, CCIAA, Numero REA e formati con spazi o trattini.
+    const reaPatterns=[
+      /(?:n[°º.]?\s*(?:di\s*)?iscrizione\s+(?:cciaa?|camera\s+di\s+commercio)|numero\s+rea|r\.?e\.?a\.?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i,
+      /(?:registro\s+imprese)[\s\S]{0,100}?(?:rea|r\.?e\.?a\.?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i
+    ];
+    for(const re of reaPatterns){const m=text.match(re);if(m){add("rea",`${m[1].toUpperCase()}-${m[2]}`,.995);break}}
+
     add("companyName",first(text,[new RegExp("(?:denominazione|ragione\\s+sociale)\\s*[:\\-]?\\s*([A-Z0-9À-Ü&'. /-]{3,100}?)"+stop,"i"),/(?:impresa)\s*[:\-]?\s*([A-Z0-9À-Ü&'. /-]{3,80})/i]),.86);
     add("vatNumber",first(text,[/(?:partita\s+iva|p\.?\s*iva)\s*[:\-]?\s*(?:IT\s*)?([0-9]{11})/i]),.96);
     add("fiscalCode",first(text,[/(?:codice\s+fiscale|c\.?f\.?)\s*[:\-]?\s*([A-Z0-9]{11,16})/i]),.94);
     add("rea",first(text,[/(?:numero\s+rea|r\.?e\.?a\.?)\s*[:\-]?\s*([A-Z]{0,2}\s*[-/]?\s*[0-9]{3,10})/i]),.88);
     add("registeredOffice",first(text,[new RegExp("(?:sede\\s+legale|indirizzo\\s+sede)\\s*[:\\-]?\\s*(.{5,150}?)"+stop,"i")]),.82);
-    add("pec",first(text,[/(?:pec|posta elettronica certificata)\s*[:\-]?\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i]),.98);
+    add("pec",first(text,[/(?:pec|posta elettronica certificata)\s*[:\-]?\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i,/\b([A-Z0-9._%+\-]*@[A-Z0-9.\-]*pec[A-Z0-9.\-]*\.[A-Z]{2,})\b/i,/\b([A-Z0-9._%+\-]*pec[A-Z0-9._%+\-]*@[A-Z0-9.\-]+\.[A-Z]{2,})\b/i]),.98);
     add("legalRepresentative",first(text,[new RegExp("(?:legale\\s+rappresentante|rappresentante\\s+legale)\\s*[:\\-]?\\s*(.{3,90}?)"+stop,"i")]),.82);
     // Modello DUVRI e schede anagrafiche: fonte prioritaria per dati operativi.
     add("companyName",first(text,[/(?:ragione\s+sociale|denominazione\s+ditta)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+(?:forma\s+giuridica|indirizzo|sede\s+legale|P\.?\s*IVA|C\.?F\.?)|\n|$)/i,/(?:ditta\s+aggiudicataria)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+P\.?\s*IVA|\n|$)/i]),.995);
@@ -112,11 +122,10 @@ const DocumentParser = (() => {
     for(const raw of items.filter(x=>!x.error)){
       const normalized=normalizeField(raw.field,raw.value);
       if(!normalized)continue;
-      const x={...raw,value:normalized};
-      const current=chosen[x.field];
+      const x={...raw,value:normalized},current=chosen[x.field];
       if(!current){chosen[x.field]=x;continue}
       if(current.value===x.value)continue;
-      conflicts.push({field:x.field,label:x.label,values:[current,x],preferredSource:(sourcePriority(x.field,x.sourceType)>sourcePriority(current.field,current.sourceType)?x:current).source});
+      conflicts.push({field:x.field,label:x.label,values:[current,x]});
       const rankX=sourcePriority(x.field,x.sourceType),rankCurrent=sourcePriority(current.field,current.sourceType);
       if(rankX>rankCurrent||(rankX===rankCurrent&&x.confidence>current.confidence))chosen[x.field]=x;
     }
