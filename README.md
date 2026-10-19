@@ -114,3 +114,9 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - esclusione delle ditte con compatibilità bassa dall'elenco manuale;
 - OCR delle visure/camerali prive di testo anche nella verifica D.M. 37/2008;
 - riconoscimento lettere A-G in elenchi, diciture di abilitazione e sezioni art. 1 D.M. 37/2008.
+
+
+### Versione 0.5.5 - Verifica camerale completa
+- OCR di tutte le pagine dei file camerali/visure, anche se il PDF contiene testo parziale;
+- riconoscimento delle lettere D.M. 37/2008 da “lettera X”, elenchi A-G e righe A) ... G);
+- ricerca limitata alle sezioni collegate al D.M. 37/2008 per evitare falsi positivi.

@@ -116,17 +116,19 @@ function findAtecoCodes(text){
   return [...out];
 }
 function findDm37Letters(text){
-  const t=complianceNorm(text).toUpperCase(),letters=new Set(),zones=[];
-  const patterns=[/D\.?\s*M\.?\s*37\s*\/\s*2008[\s\S]{0,2500}/g,/ABILITAT[AOI E]*[\s\S]{0,1800}/g,/IMPIANTI\s+DI\s+CUI[\s\S]{0,1800}/g,/LETTER[AE][\s\S]{0,1200}/g];
-  for(const re of patterns){let m;while((m=re.exec(t)))zones.push(m[0])}
+  const t=complianceNorm(text).toUpperCase(),letters=new Set();
+  const anchors=[...t.matchAll(/(?:D\.?\s*M\.?\s*37\s*\/\s*2008|DECRETO\s+37\s*\/\s*2008|ABILITAZION[EI]?\s+IMPIANTISTIC[AE]?|IMPIANTI\s+DI\s+CUI\s+ALL['’]?ART)/g)].map(m=>m.index);
+  const zones=anchors.length?anchors.map(i=>t.slice(Math.max(0,i-400),i+5000)):[t];
   for(const zone of zones){
     let m;
-    const explicit=/(?:LETTER[AE]?|ABILITAZION[EI]?|LIMITATAMENTE|CATEGORI[AE])\s*(?:DI\s+CUI[^A-G]{0,100})?[:\-]?\s*((?:[A-G](?:\s*[,;\/\-E]??\s*)){1,7})/g;
-    while((m=explicit.exec(zone)))for(const x of m[1].match(/[A-G]/g)||[])letters.add(x);
-    const article=/ART(?:ICOLO)?\.?\s*1[^A-G]{0,160}LETTER[AE]?\s*([A-G])/g;
-    while((m=article.exec(zone)))letters.add(m[1]);
-    const list=/(?:LETTER[AE]?\s*)?([A-G])\s*[)\.\-:]\s*(?:IMPIANT|PROTEZIONE|SOLLEVAMENTO|ANTINCENDIO|IDRIC|ELETTRIC|ELETTRONIC|RISCALD|GAS)/g;
-    while((m=list.exec(zone)))letters.add(m[1]);
+    const direct=/(?:LETTER[AE]?|LETT\.?|CATEGORI[AE])\s*[:.\-]?\s*([A-G])\b/g;
+    while((m=direct.exec(zone)))letters.add(m[1]);
+    const item=/\b([A-G])\s*[)\.\-:]\s*(?=(?:IMPIANT|PROTEZION|ANTINCEND|ELETTRIC|ELETTRONIC|RISCALD|CLIMAT|IDRIC|SANITAR|GAS|SOLLEVAMENT|ASCENSOR))/g;
+    while((m=item.exec(zone)))letters.add(m[1]);
+    const sequences=zone.match(/\bA\s*[,;\/\-]\s*B(?:\s*[,;\/\-]\s*[C-G]){0,5}\b/g)||[];
+    for(const seq of sequences)for(const x of seq.match(/[A-G]/g)||[])letters.add(x);
+    const labelled=/(?:LETTER[AE]?|ABILITAZION[EI]?)[^A-G]{0,100}((?:[A-G]\s*[,;\/\-E]?\s*){2,7})/g;
+    while((m=labelled.exec(zone)))for(const x of m[1].match(/[A-G]/g)||[])letters.add(x);
   }
   return [...letters].sort();
 }
@@ -140,7 +142,7 @@ async function extractComplianceText(files){
           const page=await pdf.getPage(i),content=await page.getTextContent();
           let pageText=content.items.map(x=>x.str).join(" ");
           const isCamerale=/(?:CCIAA|VISURA|CAMERALE|CAMERA DI COMMERCIO)/i.test(file.name+" "+pageText);
-          if(isCamerale&&pageText.replace(/\s/g,"").length<250&&window.Tesseract){
+          if(isCamerale&&window.Tesseract){
             const viewport=page.getViewport({scale:1.8}),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
             canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
             await page.render({canvasContext:ctx,viewport}).promise;
