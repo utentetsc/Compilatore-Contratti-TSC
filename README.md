@@ -78,3 +78,10 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - denominazione camerale recuperata anche dal nome del file visura CCIAA;
 - valori-etichetta scartati dalla ragione sociale;
 - P. IVA e C.F. reciprocamente completati quando il numero a 11 cifre coincide.
+
+
+### Versione 0.4.6 - Rimozione DB duplicato
+- rimosso il vecchio database inline presente in index.html;
+- eliminato il secondo motore di matching che svuotava cinema e lavorazioni dopo la precompilazione;
+- il riconoscimento utilizza ora unicamente il DB aggiornato incorporato in app.js;
+- Alpha Costruzioni E Impianti Srl viene collegata alle quattro righe di TSC Surbo.
