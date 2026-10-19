@@ -288,19 +288,17 @@ function supplierScore(documentName,dbName){
   const prefix=(()=>{let i=0;while(i<shorter&&ac[i]===bc[i])i++;return i/shorter})();
   return Math.round(Math.max(containment,edit*82,prefix>=0.75?88+10*prefix:0));
 }
-function activeContractRows(){
-  const rows=Array.isArray(setup.contracts)&&setup.contracts.length?setup.contracts:embeddedContracts;
-  return Array.isArray(rows)?rows:[];
-}
-function supplierTokenCoverage(documentName,dbName){
-  const stop=new Set(["di","del","della","dei","degli","e","ed","costruzioni","costruzione","servizi","service","societa","srl","spa","snc","sas"]);
-  const words=v=>normalizeSupplierName(v).split(/\s+/).filter(x=>x.length>=3&&!stop.has(x));
-  const doc=new Set(words(documentName)),db=words(dbName);
-  return db.length?db.filter(x=>doc.has(x)).length/db.length:0;
-}
+function activeContractRows(){return Array.isArray(setup.contracts)&&setup.contracts.length?setup.contracts:embeddedContracts;}
 function supplierCandidates(company){
-  const names=[...new Set(activeContractRows().map(x=>x.supplier).filter(Boolean))];
-  return names.map(name=>{let score=supplierScore(company,name);const coverage=supplierTokenCoverage(company,name);if(coverage===1)score=Math.max(score,normalizeSupplierName(name).split(/\s+/).length===1?94:98);return {name,score,coverage};}).filter(x=>x.score>=60).sort((a,b)=>b.score-a.score||b.coverage-a.coverage||a.name.localeCompare(b.name,"it"));
+  const source=normalizeSupplierName(company),sourceCompact=canonicalSupplierName(company);
+  const sourceTokens=new Set(source.split(/\s+/).filter(x=>x.length>=3&&!new Set(["srl","spa","snc","sas","costruzioni","costruzione","societa","servizi","service","della","degli","del","dei","e","ed"]).has(x)));
+  return [...new Set(activeContractRows().map(x=>x.supplier).filter(Boolean))].map(name=>{
+    const db=normalizeSupplierName(name),dbCompact=canonicalSupplierName(name),dbTokens=db.split(/\s+/).filter(x=>x.length>=3&&!new Set(["srl","spa","snc","sas","costruzioni","costruzione","societa","servizi","service","della","degli","del","dei","e","ed"]).has(x));
+    const covered=dbTokens.length?dbTokens.filter(x=>sourceTokens.has(x)).length/dbTokens.length:0;
+    let score=supplierScore(company,name);
+    if(sourceCompact===dbCompact)score=100;else if(covered===1)score=Math.max(score,dbTokens.length===1?95:98);
+    return {name,score,coverage:covered};
+  }).filter(x=>x.score>=60).sort((a,b)=>b.score-a.score||b.coverage-a.coverage||a.name.localeCompare(b.name,"it"));
 }
 function applySupplierChoice(supplier,score,sourceName){
   const matches=activeContractRows().filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
@@ -327,14 +325,15 @@ function showSupplierCandidates(company,candidates){
   panel.innerHTML=`<h4>Denominazione non univoca</h4><p>Documenti: <b>${esc(company)}</b>. Seleziona la ditta corretta:</p><div class="supplier-candidates">${candidates.slice(0,5).map(x=>`<div class="supplier-candidate"><span><b>${esc(x.name)}</b><br>Compatibilità ${x.score}%</span><button type="button" data-supplier="${esc(x.name)}" data-score="${x.score}">Usa questa ditta</button></div>`).join("")}</div>`;
 }
 function autoSelectFromCompany(){
-  const documentName=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value),provisional=cleanDisplayedCompanyName($("companyName").value||$("supplier").value),pec=$("pec").value.trim();
-  const sources=[documentName,provisional,pec.includes("@")?pec.split("@")[0]:""].filter(Boolean),bestByName=new Map();
-  for(const source of sources)for(const candidate of supplierCandidates(source)){const previous=bestByName.get(candidate.name);if(!previous||candidate.score>previous.score)bestByName.set(candidate.name,{...candidate,source})}
-  const candidates=[...bestByName.values()].sort((x,y)=>y.score-x.score||y.coverage-x.coverage||x.name.localeCompare(y.name,"it")),best=candidates[0],second=candidates[1];
-  if(!best){showStatus(`Nessuna ditta DB compatibile con: ${documentName||provisional}. DB attivo: ${activeContractRows().length} righe.`,"error");return false}
-  const decisive=best.score>=88&&(!second||best.score-second.score>=5||(best.coverage===1&&second.coverage<1));
-  if(decisive){$("documentCompanyName").value=documentName||best.name;applySupplierChoice(best.name,best.score,documentName||provisional||best.name);return true}
-  showSupplierCandidates(documentName||provisional,candidates);showStatus("Trovate più denominazioni compatibili. Seleziona quella corretta.","error");return false;
+  const documentName=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value);
+  const candidates=supplierCandidates(documentName);
+  const exact=candidates.find(x=>canonicalSupplierName(x.name)===canonicalSupplierName(documentName));
+  const best=exact||candidates[0],second=candidates.find(x=>x!==best);
+  if(!best){showStatus(`Nessuna ditta DB compatibile con: ${documentName}. DB attivo: ${activeContractRows().length} righe.`,"error");return false;}
+  if(exact||best.score>=90&&(!second||best.score-second.score>=4||best.coverage===1&&second.coverage<1)){
+    applySupplierChoice(best.name,best.score,documentName||best.name);return true;
+  }
+  showSupplierCandidates(documentName,candidates);showStatus("Trovate più denominazioni compatibili. Seleziona quella corretta.","error");return false;
 }
 document.addEventListener("click",e=>{
   const btn=e.target.closest("[data-supplier]");if(!btn)return;

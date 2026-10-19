@@ -62,3 +62,11 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - ragione sociale completa nella cella destra;
 - linea, nominativo e dicitura del legale rappresentante allineati verticalmente al blocco della firma del committente;
 - nominativo con sole iniziali maiuscole.
+
+
+### Versione 0.4.8 - Matching esatto e classificazione documenti
+- matching DB esatto prioritario per denominazioni complete;
+- supporto nomi brevi come ABC e ALPHA tramite copertura dei token;
+- DUVRI classificato prima della visura per evitare nomi ricavati dal nome file;
+- fallback del nome file usato solo per file che contengono CCIAA o VISURA;
+- rimosso il vecchio DB inline duplicato.

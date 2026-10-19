@@ -15,8 +15,8 @@ const DocumentParser = (() => {
   function first(text,res){for(const re of res){const m=text.match(re);if(m?.[1])return clean(m[1])}return ""}
   function documentType(text,file){
     const hay=`${file?.name||""} ${String(text||"").slice(0,5000)}`.toLowerCase();
-    if(/visura|camera di commercio|registro imprese|rea\b|cciaa/.test(hay))return "visura";
     if(/duvri|ditta aggiudicataria|appaltatore\s*-\s*esecutori|anagrafica aziendale/.test(hay))return "duvri";
+    if(/visura|camera di commercio|registro imprese|cciaa/.test(hay))return "visura";
     if(/documento unico di regolarit|durc|inps_|inail_/.test(hay))return "durc";
     if(/polizza|assicurazione|assicurativa|massimale/.test(hay))return "polizza";
     return "altro";
@@ -37,7 +37,6 @@ const DocumentParser = (() => {
   }
   function normalizeField(field,value){
     value=clean(value);
-    if(field==="companyName"&&/^(codice fiscale|numero d.iscrizione|registro imprese|sede legale|partita iva)/i.test(value))return "";
     if(field==="companyName")return titleWords(value);
     if(field==="registeredOffice")return normalizeAddress(value);
     if(field==="legalRepresentative")return titleWords(value.replace(/^sig\.?\s*/i,"").replace(/[•]+/g,""));
@@ -49,7 +48,7 @@ const DocumentParser = (() => {
   function extractFromText(text,file){
     const sourceType=documentType(text,file);
     const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
-    if(sourceType==="visura"){const fromFile=String(file.name||"").replace(/\.[^.]+$/,"").replace(/\b(?:CCIAA|VISURA)(?:\s+\d{1,2}[-\/]?\d{2,4})?[\s\S]*$/i,"").trim();if(fromFile)add("companyName",fromFile,.995);}
+    if(/(?:CCIAA|VISURA)/i.test(file.name||"")){const fromFile=String(file.name||"").replace(/\.[^.]+$/,"").replace(/\b(?:CCIAA|VISURA)[\s\S]*$/i,"").trim();if(fromFile)add("companyName",fromFile,.995);}
     add("companyName",first(text,[new RegExp("(?:denominazione|ragione\\s+sociale)\\s*[:\\-]?\\s*([A-Z0-9À-Ü&'. /-]{3,100}?)"+stop,"i"),/(?:impresa)\s*[:\-]?\s*([A-Z0-9À-Ü&'. /-]{3,80})/i]),.86);
     add("vatNumber",first(text,[/(?:partita\s+iva|p\.?\s*iva)\s*[:\-]?\s*(?:IT\s*)?([0-9]{11})/i]),.96);
     add("fiscalCode",first(text,[/(?:codice\s+fiscale|c\.?f\.?)\s*[:\-]?\s*([A-Z0-9]{11,16})/i]),.94);
@@ -116,7 +115,7 @@ const DocumentParser = (() => {
       const rankX=sourcePriority(x.field,x.sourceType),rankCurrent=sourcePriority(current.field,current.sourceType);
       if(rankX>rankCurrent||(rankX===rankCurrent&&x.confidence>current.confidence))chosen[x.field]=x;
     }
-    const values=Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,normalizeField(k,v.value)]).filter(([,v])=>v));if(!values.vatNumber&&/^\d{11}$/.test(values.fiscalCode||""))values.vatNumber=values.fiscalCode;if(!values.fiscalCode&&/^\d{11}$/.test(values.vatNumber||""))values.fiscalCode=values.vatNumber;return {values,evidence:Object.values(chosen),conflicts,errors:items.filter(x=>x.error)};
+    return {values:Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,normalizeField(k,v.value)])),evidence:Object.values(chosen),conflicts,errors:items.filter(x=>x.error)};
   }
   return {extract,FIELD_LABELS};
 })();
