@@ -6,17 +6,7 @@ const DocumentParser = (() => {
     if(!window.pdfjsLib)throw new Error("Libreria PDF non disponibile");
     pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
     const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let text="";
-    for(let i=1;i<=pdf.numPages;i++){
-      const page=await pdf.getPage(i),content=await page.getTextContent();
-      let pageText=content.items.map(x=>x.str).join(" ");
-      if(pageText.replace(/\s/g,"").length<80&&window.Tesseract){
-        const viewport=page.getViewport({scale:1.7}),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
-        canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-        await page.render({canvasContext:ctx,viewport}).promise;
-        try{pageText+=" "+(await Tesseract.recognize(canvas,"ita")).data.text}catch(err){console.warn("OCR visura non riuscito, pagina",i,err)}
-      }
-      text+="\n"+pageText;
-    }
+    for(let i=1;i<=pdf.numPages;i++){const page=await pdf.getPage(i),content=await page.getTextContent();text+="\n"+content.items.map(x=>x.str).join(" ")}
     return text;
   }
   async function docxText(file){if(!window.mammoth)throw new Error("Libreria DOCX non disponibile");return (await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value}
@@ -52,25 +42,14 @@ const DocumentParser = (() => {
     if(field==="registeredOffice")return normalizeAddress(value);
     if(field==="legalRepresentative")return titleWords(value.replace(/^sig\.?\s*/i,"").replace(/[•]+/g,""));
     if(field==="email"||field==="pec")return value.toLocaleLowerCase("it-IT");
-    if(field==="rea")return value.toLocaleUpperCase("it-IT").replace(/\s*-\s*/g,"-").replace(/\s+/g,"");
-    if(field==="inpsPosition")return value.replace(/metalmeccanico/i,"Metalmeccanico").replace(/metal/i,"Metalmeccanico").replace(/edile/i,"Edile").replace(/\s*[:;]\s*/g,": ").replace(/\s+/g," ");
-    if(field==="phone")return value.replace(/\s+/g,"");
+    if(field==="rea")return value.toLocaleUpperCase("it-IT").replace(/\s*-\s*/g,"-");
     return value;
   }
   function evidence(field,value,file,confidence,sourceType){return {field,label:FIELD_LABELS[field]||field,value:normalizeField(field,value),source:file.name,sourceType,confidence}}
   function extractFromText(text,file){
     const sourceType=documentType(text,file);
     const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
-    if(sourceType==="visura"){
-      const fromFile=String(file.name||"").replace(/\.[^.]+$/,"").replace(/\b(?:CCIAA|VISURA)(?:\s+\d{1,2}[-\/]?\d{2,4})?[\s\S]*$/i,"").trim();
-      if(fromFile&&fromFile.length>4)add("companyName",fromFile,.995);
-    }
-    // Formati ricorrenti di visure e schede DUVRI.
-    add("companyName",first(text,[/(?:ditta\s+aggiudicataria\s*:?)\s*\n?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+P\.?\s*IVA|\s+C\.?F\.?|\n|$)/i,/(?:denominazione\s+ditta|ragione\s+sociale)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+(?:forma\s+giuridica|sede\s+legale|P\.?\s*IVA|C\.?F\.?)|\n|$)/i]),.99);
-    const combinedTax=first(text,[/(?:P\.?\s*IVA\s*[-–/]?\s*C\.?F\.?|C\.?F\.?\s*[-–/]?\s*P\.?\s*IVA)\s*[:;\-]?\s*(\d{11})/i,/avente\s+C\.?F\.?\s*(\d{11})\s+e\s+P\.?IVA/i]);
-    if(combinedTax){add("vatNumber",combinedTax,.99);add("fiscalCode",combinedTax,.99)}
-    add("rea",first(text,[/(?:n[°º]\s*iscrizione\s+cciaa|rea|r\.?e\.?a\.?)\s*[:;\-]?\s*([A-Z]{2}\s*[- ]?\s*\d{4,10})/i]),.98);
-    add("registeredOffice",first(text,[/(?:sede\s+legale)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 ,'\.\/-]{5,160}?)(?=\s+(?:P\.?\s*IVA|C\.?F\.?|REA|PEC|appaltatore\s*-?\s*esecutori|legale\s+rappresentante)|\n|$)/i]),.99);
+    if(sourceType==="visura"){const fromFile=String(file.name||"").replace(/\.[^.]+$/,"").replace(/\b(?:CCIAA|VISURA)(?:\s+\d{1,2}[-\/]?\d{2,4})?[\s\S]*$/i,"").trim();if(fromFile)add("companyName",fromFile,.995);}
     add("companyName",first(text,[new RegExp("(?:denominazione|ragione\\s+sociale)\\s*[:\\-]?\\s*([A-Z0-9À-Ü&'. /-]{3,100}?)"+stop,"i"),/(?:impresa)\s*[:\-]?\s*([A-Z0-9À-Ü&'. /-]{3,80})/i]),.86);
     add("vatNumber",first(text,[/(?:partita\s+iva|p\.?\s*iva)\s*[:\-]?\s*(?:IT\s*)?([0-9]{11})/i]),.96);
     add("fiscalCode",first(text,[/(?:codice\s+fiscale|c\.?f\.?)\s*[:\-]?\s*([A-Z0-9]{11,16})/i]),.94);
@@ -84,7 +63,7 @@ const DocumentParser = (() => {
     add("legalRepresentative",first(text,[/(?:legale\s+rappresentante)\s*:\s*(?:sig\.?\s*)?([A-ZÀ-Ü][A-ZÀ-Ü' -]{3,80}?)(?=\s+(?:sede\s+legale|denominazione|ragione\s+sociale|forma\s+giuridica|indirizzo|recapiti)|$)/i]),.98);
     add("phone",first(text,[/(?:recapiti|tel(?:efono)?)[\s:]*([+\d][\d\s./-]{6,25})/i]),.95);
     add("email",first(text,[/(?:@?email|e-mail|mail)\s*:\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i]),.98);
-    add("inpsPosition",first(text,[/(?:n[°º]\s*iscrizione\s+inps|matricola\s+inps|posizione\s+inps)\s*[:;\-]?\s*((?:metal(?:meccanico)?\s*[:;]?\s*\d{6,15})(?:\s+(?:edile|e)\s*[:;]?\s*\d{6,15})?)/i,/(?:HA\s+POSIZIONE\s+INPS)[\s\S]{0,100}?(Metalmeccanico\s*:\s*\d{6,15}\s+edile\s*:\s*\d{6,15})/i]),.99);
+    add("inpsPosition",first(text,[/(?:n[°º]\s*iscrizione\s+inps|matricola\s+inps|posizione\s+inps)\s*[:;\-]?\s*([A-Z0-9./-]{5,30})/i]),.98);
     add("inailPosition",first(text,[/(?:n[°º]\s*iscrizione\s+inail|posizione\s+inail)\s*[:;\-]?\s*([A-Z0-9./-]{5,40}(?:\s*[-–]\s*pat\.?\s*[A-Z0-9./-]+)?)/i]),.96);
 
     // Assicurazione: prima cerca denominazioni vicine a parole assicurative, poi marchi comuni.
@@ -137,10 +116,7 @@ const DocumentParser = (() => {
       const rankX=sourcePriority(x.field,x.sourceType),rankCurrent=sourcePriority(current.field,current.sourceType);
       if(rankX>rankCurrent||(rankX===rankCurrent&&x.confidence>current.confidence))chosen[x.field]=x;
     }
-    const values=Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,normalizeField(k,v.value)]).filter(([,v])=>v));
-    if(!values.vatNumber&&/^\d{11}$/.test(values.fiscalCode||""))values.vatNumber=values.fiscalCode;
-    if(!values.fiscalCode&&/^\d{11}$/.test(values.vatNumber||""))values.fiscalCode=values.vatNumber;
-    return {values,evidence:Object.values(chosen).filter(x=>normalizeField(x.field,x.value)),conflicts,errors:items.filter(x=>x.error)};
+    const values=Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,normalizeField(k,v.value)]).filter(([,v])=>v));if(!values.vatNumber&&/^\d{11}$/.test(values.fiscalCode||""))values.vatNumber=values.fiscalCode;if(!values.fiscalCode&&/^\d{11}$/.test(values.vatNumber||""))values.fiscalCode=values.vatNumber;return {values,evidence:Object.values(chosen),conflicts,errors:items.filter(x=>x.error)};
   }
   return {extract,FIELD_LABELS};
 })();

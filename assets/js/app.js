@@ -284,22 +284,26 @@ function supplierScore(documentName,dbName){
   if(!ac||!bc)return 0;if(ac===bc)return 100;
   const shorter=Math.min(ac.length,bc.length),longer=Math.max(ac.length,bc.length);
   const containment=(ac.includes(bc)||bc.includes(ac))&&shorter>=5?Math.round(92+6*(shorter/longer)):0;
-  const stop=new Set(["di","del","della","dei","degli","e","ed","costruzioni","costruzione","servizi","service","societa"]);
-  const tokens=v=>normalizeSupplierName(v).split(/\s+/).filter(x=>x.length>=3&&!stop.has(x));
-  const docTokens=new Set(tokens(documentName)),dbTokens=tokens(dbName);
-  const covered=dbTokens.length?dbTokens.filter(x=>docTokens.has(x)).length/dbTokens.length:0;
-  const tokenScore=covered===1&&dbTokens.length>=2?97:covered>=0.75?90:covered>=0.5?76:0;
   const edit=1-levenshtein(ac,bc)/longer;
   const prefix=(()=>{let i=0;while(i<shorter&&ac[i]===bc[i])i++;return i/shorter})();
-  return Math.round(Math.max(containment,tokenScore,edit*82,prefix>=0.75?88+10*prefix:0));
+  return Math.round(Math.max(containment,edit*82,prefix>=0.75?88+10*prefix:0));
+}
+function activeContractRows(){
+  const rows=Array.isArray(setup.contracts)&&setup.contracts.length?setup.contracts:embeddedContracts;
+  return Array.isArray(rows)?rows:[];
+}
+function supplierTokenCoverage(documentName,dbName){
+  const stop=new Set(["di","del","della","dei","degli","e","ed","costruzioni","costruzione","servizi","service","societa","srl","spa","snc","sas"]);
+  const words=v=>normalizeSupplierName(v).split(/\s+/).filter(x=>x.length>=3&&!stop.has(x));
+  const doc=new Set(words(documentName)),db=words(dbName);
+  return db.length?db.filter(x=>doc.has(x)).length/db.length:0;
 }
 function supplierCandidates(company){
-  return [...new Set((setup.contracts||[]).map(x=>x.supplier).filter(Boolean))]
-    .map(name=>({name,score:supplierScore(company,name)})).filter(x=>x.score>=60)
-    .sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,"it"));
+  const names=[...new Set(activeContractRows().map(x=>x.supplier).filter(Boolean))];
+  return names.map(name=>{let score=supplierScore(company,name);const coverage=supplierTokenCoverage(company,name);if(coverage===1)score=Math.max(score,normalizeSupplierName(name).split(/\s+/).length===1?94:98);return {name,score,coverage};}).filter(x=>x.score>=60).sort((a,b)=>b.score-a.score||b.coverage-a.coverage||a.name.localeCompare(b.name,"it"));
 }
 function applySupplierChoice(supplier,score,sourceName){
-  const matches=(setup.contracts||[]).filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
+  const matches=activeContractRows().filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
   const cinemaNames=[...new Set(matches.map(x=>x.cinema))],workNames=[...new Set(matches.map(x=>x.workType))];
   lastMatchedWorkNames=[...workNames];
   [...$("cinemaSelect").options].forEach(o=>{const c=setup.cinemas.find(x=>x.id===o.value);o.selected=!!c&&cinemaNames.some(n=>cinemaKey(n)===cinemaKey(c.dbName||c.name))});
@@ -308,8 +312,7 @@ function applySupplierChoice(supplier,score,sourceName){
   [...$("workSelect").options].forEach(o=>{if(workNames.some(n=>ContractDbImporter.norm(n)===ContractDbImporter.norm(o.textContent)))o.selected=true});
   $("documentCompanyName").value=sourceName||$("documentCompanyName").value;
   $("databaseCompanyName").value=supplier;
-  const officialName=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value);
-  if(officialName)$("companyName").value=officialName;
+  $("companyName").value=supplier;
   $("supplier").value=supplier;
   const cinemas=selectedCinemas(),works=selectedWorkTypes();
   updateCinemaSummary();updateWorkSummary();applyDbMatches(matches,cinemas,works,true);
@@ -324,28 +327,14 @@ function showSupplierCandidates(company,candidates){
   panel.innerHTML=`<h4>Denominazione non univoca</h4><p>Documenti: <b>${esc(company)}</b>. Seleziona la ditta corretta:</p><div class="supplier-candidates">${candidates.slice(0,5).map(x=>`<div class="supplier-candidate"><span><b>${esc(x.name)}</b><br>Compatibilità ${x.score}%</span><button type="button" data-supplier="${esc(x.name)}" data-score="${x.score}">Usa questa ditta</button></div>`).join("")}</div>`;
 }
 function autoSelectFromCompany(){
-  const documentName=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value);
-  const provisional=cleanDisplayedCompanyName($("companyName").value||$("supplier").value);
-  const pec=$("pec").value.trim();
-  const sources=[documentName,provisional,pec.includes("@")?pec.split("@")[0]:""].filter(Boolean);
-  const bestByName=new Map();
-  for(const source of sources){
-    for(const candidate of supplierCandidates(source)){
-      const previous=bestByName.get(candidate.name);
-      if(!previous||candidate.score>previous.score)bestByName.set(candidate.name,{...candidate,source});
-    }
-  }
-  const candidates=[...bestByName.values()].sort((x,y)=>y.score-x.score||x.name.localeCompare(y.name,"it"));
-  const best=candidates[0],second=candidates[1];
-  if(!best){showStatus(`Nessuna ditta compatibile nel DB per: ${documentName||provisional}.`,"error");return false}
-  if(best.score>=80&&!(second&&best.score-second.score<8)){
-    $("documentCompanyName").value=documentName||best.name;
-    applySupplierChoice(best.name,best.score,documentName||provisional||best.name);
-    return true;
-  }
-  showSupplierCandidates(documentName||provisional,candidates);
-  showStatus("Trovate più denominazioni compatibili. Seleziona quella corretta.","error");
-  return false;
+  const documentName=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value),provisional=cleanDisplayedCompanyName($("companyName").value||$("supplier").value),pec=$("pec").value.trim();
+  const sources=[documentName,provisional,pec.includes("@")?pec.split("@")[0]:""].filter(Boolean),bestByName=new Map();
+  for(const source of sources)for(const candidate of supplierCandidates(source)){const previous=bestByName.get(candidate.name);if(!previous||candidate.score>previous.score)bestByName.set(candidate.name,{...candidate,source})}
+  const candidates=[...bestByName.values()].sort((x,y)=>y.score-x.score||y.coverage-x.coverage||x.name.localeCompare(y.name,"it")),best=candidates[0],second=candidates[1];
+  if(!best){showStatus(`Nessuna ditta DB compatibile con: ${documentName||provisional}. DB attivo: ${activeContractRows().length} righe.`,"error");return false}
+  const decisive=best.score>=88&&(!second||best.score-second.score>=5||(best.coverage===1&&second.coverage<1));
+  if(decisive){$("documentCompanyName").value=documentName||best.name;applySupplierChoice(best.name,best.score,documentName||provisional||best.name);return true}
+  showSupplierCandidates(documentName||provisional,candidates);showStatus("Trovate più denominazioni compatibili. Seleziona quella corretta.","error");return false;
 }
 document.addEventListener("click",e=>{
   const btn=e.target.closest("[data-supplier]");if(!btn)return;
