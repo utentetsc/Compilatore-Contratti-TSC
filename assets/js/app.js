@@ -116,17 +116,17 @@ function findAtecoCodes(text){
   return [...out];
 }
 function findDm37Letters(text){
-  const t=complianceNorm(text).toUpperCase();
-  const letters=new Set();
-  const zones=[];
-  const patterns=[/D\.?\s*M\.?\s*37\s*\/\s*2008[\s\S]{0,900}/g,/ABILITAT[AOI E]*[\s\S]{0,900}/g,/LETTER[AE][\s\S]{0,500}/g];
+  const t=complianceNorm(text).toUpperCase(),letters=new Set(),zones=[];
+  const patterns=[/D\.?\s*M\.?\s*37\s*\/\s*2008[\s\S]{0,2500}/g,/ABILITAT[AOI E]*[\s\S]{0,1800}/g,/IMPIANTI\s+DI\s+CUI[\s\S]{0,1800}/g,/LETTER[AE][\s\S]{0,1200}/g];
   for(const re of patterns){let m;while((m=re.exec(t)))zones.push(m[0])}
   for(const zone of zones){
     let m;
-    const explicit=/(?:LETTER[AE]?|ABILITAZION[EI]?|LIMITATAMENTE)\s*(?:DI CUI[^A-G]{0,80})?[:\-]?\s*([A-G](?:\s*[,;\/-]?\s*[A-G])*)/g;
-    while((m=explicit.exec(zone))){for(const x of m[1].match(/[A-G]/g)||[])letters.add(x)}
-    const article=/ART(?:ICOLO)?\.?\s*1[^A-G]{0,120}LETTER[AE]?\s*([A-G])/g;
+    const explicit=/(?:LETTER[AE]?|ABILITAZION[EI]?|LIMITATAMENTE|CATEGORI[AE])\s*(?:DI\s+CUI[^A-G]{0,100})?[:\-]?\s*((?:[A-G](?:\s*[,;\/\-E]??\s*)){1,7})/g;
+    while((m=explicit.exec(zone)))for(const x of m[1].match(/[A-G]/g)||[])letters.add(x);
+    const article=/ART(?:ICOLO)?\.?\s*1[^A-G]{0,160}LETTER[AE]?\s*([A-G])/g;
     while((m=article.exec(zone)))letters.add(m[1]);
+    const list=/(?:LETTER[AE]?\s*)?([A-G])\s*[)\.\-:]\s*(?:IMPIANT|PROTEZIONE|SOLLEVAMENTO|ANTINCENDIO|IDRIC|ELETTRIC|ELETTRONIC|RISCALD|GAS)/g;
+    while((m=list.exec(zone)))letters.add(m[1]);
   }
   return [...letters].sort();
 }
@@ -137,10 +137,18 @@ async function extractComplianceText(files){
       if(/\.pdf$/i.test(file.name)&&typeof pdfjsLib!=="undefined"){
         const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
         for(let i=1;i<=pdf.numPages;i++){
-          const content=await (await pdf.getPage(i)).getTextContent();
-          chunks.push(content.items.map(x=>x.str).join(" "));
+          const page=await pdf.getPage(i),content=await page.getTextContent();
+          let pageText=content.items.map(x=>x.str).join(" ");
+          const isCamerale=/(?:CCIAA|VISURA|CAMERALE|CAMERA DI COMMERCIO)/i.test(file.name+" "+pageText);
+          if(isCamerale&&pageText.replace(/\s/g,"").length<250&&window.Tesseract){
+            const viewport=page.getViewport({scale:1.8}),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
+            canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+            await page.render({canvasContext:ctx,viewport}).promise;
+            try{pageText+=" "+(await Tesseract.recognize(canvas,"ita")).data.text}catch(err){console.warn("OCR camerale non riuscito, pagina",i,err)}
+          }
+          chunks.push(pageText);
         }
-      }else if(/\.(txt|csv)$/i.test(file.name)) chunks.push(await file.text());
+      }else if(/\.(txt|csv)$/i.test(file.name))chunks.push(await file.text());
     }catch(err){console.warn("Verifica camerale: testo non leggibile",file.name,err)}
   }
   return chunks.join("\n");
@@ -368,8 +376,10 @@ function autoSelectFromCompany(){
   const ranked=deterministicSupplierMatch(documentName)||deterministicSupplierMatch(emailHint);
   if(!ranked){showStatus(`Nessuna ditta DB compatibile con: ${documentName}. DB incorporato: ${embeddedContracts.length} righe.`,"error");return false;}
   const best=ranked[0],second=ranked[1];
-  if(best.score>=90&&(!second||best.score-second.score>=4||best.coverage===1&&second.coverage<1))return applySupplierRowsDirect(best.name,best.score,documentName);
-  showSupplierCandidates(documentName,ranked);showStatus("Trovate più denominazioni compatibili. Seleziona quella corretta.","error");return false;
+  const clearWinner=best.score>=75&&(!second||best.score-second.score>=20);
+  if(clearWinner||best.score>=90&&(!second||best.score-second.score>=4||best.coverage===1&&second.coverage<1))return applySupplierRowsDirect(best.name,best.score,documentName);
+  const plausible=ranked.filter(x=>x.score>=55||x.coverage>=0.5);
+  showSupplierCandidates(documentName,plausible);showStatus("Trovate più denominazioni plausibili. Seleziona quella corretta.","error");return false;
 }
 document.addEventListener("click",e=>{
   const btn=e.target.closest("[data-supplier]");if(!btn)return;

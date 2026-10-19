@@ -107,3 +107,10 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - nei tre campi visibili viene mostrata la denominazione ufficiale completa recuperata dai documenti;
 - le denominazioni DB già complete restano visualizzate senza modifiche;
 - mantenute le correzioni generali per REA e PEC.
+
+
+### Versione 0.5.4 - Matching univoco e verifica camerale OCR
+- selezione automatica quando il primo candidato DB distacca nettamente gli altri;
+- esclusione delle ditte con compatibilità bassa dall'elenco manuale;
+- OCR delle visure/camerali prive di testo anche nella verifica D.M. 37/2008;
+- riconoscimento lettere A-G in elenchi, diciture di abilitazione e sezioni art. 1 D.M. 37/2008.
