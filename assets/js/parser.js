@@ -57,6 +57,8 @@ const DocumentParser = (() => {
     add("pec",first(text,[/(?:pec|posta elettronica certificata)\s*[:\-]?\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i]),.98);
     add("legalRepresentative",first(text,[new RegExp("(?:legale\\s+rappresentante|rappresentante\\s+legale)\\s*[:\\-]?\\s*(.{3,90}?)"+stop,"i")]),.82);
     // Modello DUVRI e schede anagrafiche: fonte prioritaria per dati operativi.
+    add("companyName",first(text,[/(?:ragione\s+sociale|denominazione\s+ditta)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+(?:forma\s+giuridica|indirizzo|sede\s+legale|P\.?\s*IVA|C\.?F\.?)|\n|$)/i,/(?:ditta\s+aggiudicataria)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+P\.?\s*IVA|\n|$)/i]),.995);
+    add("inpsPosition",first(text,[/(?:n[°º]\s*iscrizione\s+inps|posizione\s+inps)\s*[:;\-]?\s*(metal(?:meccanico)?\s*[:;]?\s*\d{6,15}\s+(?:edile|e)\s*[:;]?\s*\d{6,15})/i,/(Metalmeccanico\s*:\s*\d{6,15}\s+edile\s*:\s*\d{6,15})/i]),.995);
     add("companyName",first(text,[/(?:ditta\s+aggiudicataria[^:]*|denominazione\s+ditta|ragione\s+sociale)\s*:\s*([^\n]{3,100}?)(?=\s+(?:P\.?\s*IVA|C\.?F\.?|forma\s+giuridica|legale\s+rappresentante)|$)/i]),.98);
     add("registeredOffice",first(text,[/(?:sede\s+legale|indirizzo)\s*:\s*([^\n]{5,150}?)(?=\s+(?:appaltatore\s*-\s*esecutori|recapiti|@?email|n[°º]\s*iscrizione)|$)/i]),.97);
     add("legalRepresentative",first(text,[/(?:legale\s+rappresentante)\s*:\s*(?:sig\.?\s*)?([A-ZÀ-Ü][A-ZÀ-Ü' -]{3,80}?)(?=\s+(?:sede\s+legale|denominazione|ragione\s+sociale|forma\s+giuridica|indirizzo|recapiti)|$)/i]),.98);
@@ -107,7 +109,10 @@ const DocumentParser = (() => {
   }
   function merge(items){
     const chosen={},conflicts=[];
-    for(const x of items.filter(x=>!x.error)){
+    for(const raw of items.filter(x=>!x.error)){
+      const normalized=normalizeField(raw.field,raw.value);
+      if(!normalized)continue;
+      const x={...raw,value:normalized};
       const current=chosen[x.field];
       if(!current){chosen[x.field]=x;continue}
       if(current.value===x.value)continue;
@@ -115,7 +120,10 @@ const DocumentParser = (() => {
       const rankX=sourcePriority(x.field,x.sourceType),rankCurrent=sourcePriority(current.field,current.sourceType);
       if(rankX>rankCurrent||(rankX===rankCurrent&&x.confidence>current.confidence))chosen[x.field]=x;
     }
-    return {values:Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,normalizeField(k,v.value)])),evidence:Object.values(chosen),conflicts,errors:items.filter(x=>x.error)};
+    const values=Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,v.value]));
+    if(!values.vatNumber&&/^\d{11}$/.test(values.fiscalCode||""))values.vatNumber=values.fiscalCode;
+    if(!values.fiscalCode&&/^\d{11}$/.test(values.vatNumber||""))values.fiscalCode=values.vatNumber;
+    return {values,evidence:Object.values(chosen),conflicts,errors:items.filter(x=>x.error)};
   }
   return {extract,FIELD_LABELS};
 })();

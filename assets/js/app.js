@@ -357,7 +357,8 @@ function applySupplierRowsDirect(supplier,score,sourceName){
 }
 function autoSelectFromCompany(){
   const documentName=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value);
-  const ranked=deterministicSupplierMatch(documentName);
+  const emailHint=[document.getElementById("email")?.value,$("pec")?.value].filter(Boolean).map(v=>String(v).split("@")[1]||"").join(" ").replace(/\.(it|com|net|org)\b/gi," ").replace(/[^a-z0-9]+/gi," ");
+  const ranked=deterministicSupplierMatch(documentName)||deterministicSupplierMatch(emailHint);
   if(!ranked){showStatus(`Nessuna ditta DB compatibile con: ${documentName}. DB incorporato: ${embeddedContracts.length} righe.`,"error");return false;}
   const best=ranked[0],second=ranked[1];
   if(best.score>=90&&(!second||best.score-second.score>=4||best.coverage===1&&second.coverage<1))return applySupplierRowsDirect(best.name,best.score,documentName);

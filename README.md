@@ -77,3 +77,11 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - dopo il riconoscimento ricostruisce direttamente gli elenchi con i soli cinema e lavori della ditta;
 - supportati sia nomi completi sia alias brevi ABC/ALPHA;
 - OCR limitato alle sole visure indicate nel nome file come CCIAA o VISURA.
+
+
+### Versione 0.5.0 - Ragione sociale e fallback DB
+- indirizzi e intestazioni non possono più essere scelti come ragione sociale;
+- i candidati non validi vengono eliminati prima dell'applicazione delle priorità documentali;
+- estrazione rafforzata della ragione sociale dai modelli DUVRI;
+- fallback matching tramite dominio e-mail/PEC per alias brevi come ABC;
+- recupero congiunto delle due posizioni INPS.
