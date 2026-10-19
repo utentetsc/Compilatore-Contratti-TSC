@@ -284,9 +284,14 @@ function supplierScore(documentName,dbName){
   if(!ac||!bc)return 0;if(ac===bc)return 100;
   const shorter=Math.min(ac.length,bc.length),longer=Math.max(ac.length,bc.length);
   const containment=(ac.includes(bc)||bc.includes(ac))&&shorter>=5?Math.round(92+6*(shorter/longer)):0;
+  const stop=new Set(["di","del","della","dei","degli","e","ed","costruzioni","costruzione","servizi","service","societa"]);
+  const tokens=v=>normalizeSupplierName(v).split(/\s+/).filter(x=>x.length>=3&&!stop.has(x));
+  const docTokens=new Set(tokens(documentName)),dbTokens=tokens(dbName);
+  const covered=dbTokens.length?dbTokens.filter(x=>docTokens.has(x)).length/dbTokens.length:0;
+  const tokenScore=covered===1&&dbTokens.length>=2?97:covered>=0.75?90:covered>=0.5?76:0;
   const edit=1-levenshtein(ac,bc)/longer;
   const prefix=(()=>{let i=0;while(i<shorter&&ac[i]===bc[i])i++;return i/shorter})();
-  return Math.round(Math.max(containment,edit*82,prefix>=0.75?88+10*prefix:0));
+  return Math.round(Math.max(containment,tokenScore,edit*82,prefix>=0.75?88+10*prefix:0));
 }
 function supplierCandidates(company){
   return [...new Set((setup.contracts||[]).map(x=>x.supplier).filter(Boolean))]
@@ -303,7 +308,8 @@ function applySupplierChoice(supplier,score,sourceName){
   [...$("workSelect").options].forEach(o=>{if(workNames.some(n=>ContractDbImporter.norm(n)===ContractDbImporter.norm(o.textContent)))o.selected=true});
   $("documentCompanyName").value=sourceName||$("documentCompanyName").value;
   $("databaseCompanyName").value=supplier;
-  $("companyName").value=supplier;
+  const officialName=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value);
+  if(officialName)$("companyName").value=officialName;
   $("supplier").value=supplier;
   const cinemas=selectedCinemas(),works=selectedWorkTypes();
   updateCinemaSummary();updateWorkSummary();applyDbMatches(matches,cinemas,works,true);

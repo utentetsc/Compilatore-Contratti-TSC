@@ -62,3 +62,11 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - ragione sociale completa nella cella destra;
 - linea, nominativo e dicitura del legale rappresentante allineati verticalmente al blocco della firma del committente;
 - nominativo con sole iniziali maiuscole.
+
+
+### Versione 0.4.4 - Cambio ditta e matching DB
+- matching per token tra denominazione ufficiale e alias breve DB;
+- Alpha Costruzioni e Impianti Srl riconosciuta come ALPHA IMPIANTI;
+- ragione sociale ufficiale non sovrascritta dal nome breve DB;
+- OCR automatico delle visure PDF prive di testo;
+- recupero P. IVA/C.F. combinati, REA CCIAA e doppia posizione INPS.
