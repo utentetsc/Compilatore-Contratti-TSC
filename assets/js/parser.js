@@ -47,6 +47,7 @@ const DocumentParser = (() => {
   }
   function normalizeField(field,value){
     value=clean(value);
+    if(field==="companyName"&&/^(codice fiscale|numero d.iscrizione|registro imprese|sede legale|partita iva)/i.test(value))return "";
     if(field==="companyName")return titleWords(value);
     if(field==="registeredOffice")return normalizeAddress(value);
     if(field==="legalRepresentative")return titleWords(value.replace(/^sig\.?\s*/i,"").replace(/[•]+/g,""));
@@ -60,6 +61,10 @@ const DocumentParser = (() => {
   function extractFromText(text,file){
     const sourceType=documentType(text,file);
     const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
+    if(sourceType==="visura"){
+      const fromFile=String(file.name||"").replace(/\.[^.]+$/,"").replace(/\b(?:CCIAA|VISURA)(?:\s+\d{1,2}[-\/]?\d{2,4})?[\s\S]*$/i,"").trim();
+      if(fromFile&&fromFile.length>4)add("companyName",fromFile,.995);
+    }
     // Formati ricorrenti di visure e schede DUVRI.
     add("companyName",first(text,[/(?:ditta\s+aggiudicataria\s*:?)\s*\n?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+P\.?\s*IVA|\s+C\.?F\.?|\n|$)/i,/(?:denominazione\s+ditta|ragione\s+sociale)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+(?:forma\s+giuridica|sede\s+legale|P\.?\s*IVA|C\.?F\.?)|\n|$)/i]),.99);
     const combinedTax=first(text,[/(?:P\.?\s*IVA\s*[-–/]?\s*C\.?F\.?|C\.?F\.?\s*[-–/]?\s*P\.?\s*IVA)\s*[:;\-]?\s*(\d{11})/i,/avente\s+C\.?F\.?\s*(\d{11})\s+e\s+P\.?IVA/i]);
@@ -132,7 +137,10 @@ const DocumentParser = (() => {
       const rankX=sourcePriority(x.field,x.sourceType),rankCurrent=sourcePriority(current.field,current.sourceType);
       if(rankX>rankCurrent||(rankX===rankCurrent&&x.confidence>current.confidence))chosen[x.field]=x;
     }
-    return {values:Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,normalizeField(k,v.value)])),evidence:Object.values(chosen),conflicts,errors:items.filter(x=>x.error)};
+    const values=Object.fromEntries(Object.entries(chosen).map(([k,v])=>[k,normalizeField(k,v.value)]).filter(([,v])=>v));
+    if(!values.vatNumber&&/^\d{11}$/.test(values.fiscalCode||""))values.vatNumber=values.fiscalCode;
+    if(!values.fiscalCode&&/^\d{11}$/.test(values.vatNumber||""))values.fiscalCode=values.vatNumber;
+    return {values,evidence:Object.values(chosen).filter(x=>normalizeField(x.field,x.value)),conflicts,errors:items.filter(x=>x.error)};
   }
   return {extract,FIELD_LABELS};
 })();

@@ -70,3 +70,11 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - ragione sociale ufficiale non sovrascritta dal nome breve DB;
 - OCR automatico delle visure PDF prive di testo;
 - recupero P. IVA/C.F. combinati, REA CCIAA e doppia posizione INPS.
+
+
+### Versione 0.4.5 - DB Contratti aggiornato e visure
+- incorporato DB Contratti.xlsx aggiornato (fornitore Alpha Costruzioni E Impianti Srl);
+- eliminato il riutilizzo del vecchio DB conservato nel browser;
+- denominazione camerale recuperata anche dal nome del file visura CCIAA;
+- valori-etichetta scartati dalla ragione sociale;
+- P. IVA e C.F. reciprocamente completati quando il numero a 11 cifre coincide.
