@@ -205,19 +205,9 @@ async function runLegalComplianceCheck(files,evidenceText=""){
   renderLegalCompliance(lastComplianceDocumentText);
 }
 
-function selectedWorkTypes(){
-  return [...$("workSelect").selectedOptions].map(o=>{
-    const found=setup.workTypes.find(x=>x.id===o.value);
-    return found||{id:o.value,name:o.textContent.trim(),description:""};
-  }).filter(x=>x.name);
-}
+function selectedWorkTypes(){return [...$("workSelect").selectedOptions].map(o=>setup.workTypes.find(x=>x.id===o.value)||{id:o.value,name:o.textContent.trim(),description:""}).filter(x=>x.name)}
 function updateWorkSummary(){const list=selectedWorkTypes();$("workSelectionSummary").textContent=list.length?`${list.length} tipologie: ${list.map(x=>x.name).join(", ")}`:"Nessuna tipologia selezionata"}
-function selectedCinemas(){
-  return [...$("cinemaSelect").selectedOptions].map(o=>{
-    const found=setup.cinemas.find(x=>x.id===o.value);
-    return found||{id:o.value,name:o.textContent.trim(),address:"",city:""};
-  }).filter(x=>x.name);
-}
+function selectedCinemas(){return [...$("cinemaSelect").selectedOptions].map(o=>setup.cinemas.find(x=>x.id===o.value)||{id:o.value,name:o.textContent.trim(),address:"",city:""}).filter(x=>x.name)}
 function updateCinemaSummary(){const list=selectedCinemas();$("cinemaSelectionSummary").textContent=list.length?`${list.length} cinema: ${list.map(x=>x.name).join(", ")}`:"Nessun cinema selezionato"}
 function cinemaMatches(dbName,selected){
   const a=ContractDbImporter.norm(dbName).replace(/^tsc /,""), b=ContractDbImporter.norm(selected).replace(/^tsc /,"");
@@ -324,20 +314,58 @@ function showSupplierCandidates(company,candidates){
   const panel=$("supplierMatchPanel");panel.hidden=false;
   panel.innerHTML=`<h4>Denominazione non univoca</h4><p>Documenti: <b>${esc(company)}</b>. Seleziona la ditta corretta:</p><div class="supplier-candidates">${candidates.slice(0,5).map(x=>`<div class="supplier-candidate"><span><b>${esc(x.name)}</b><br>Compatibilità ${x.score}%</span><button type="button" data-supplier="${esc(x.name)}" data-score="${x.score}">Usa questa ditta</button></div>`).join("")}</div>`;
 }
+function deterministicSupplierMatch(company){
+  const source=normalizeSupplierName(company),sourceCompact=canonicalSupplierName(company);
+  const ignore=new Set(["srl","spa","snc","sas","sapa","societa","costruzioni","costruzione","servizi","service","di","del","della","dei","degli","e","ed"]);
+  const tokens=v=>normalizeSupplierName(v).split(/\s+/).filter(x=>x.length>=3&&!ignore.has(x));
+  const sourceTokens=new Set(tokens(company));
+  const names=[...new Set(embeddedContracts.map(x=>x.supplier).filter(Boolean))];
+  const ranked=names.map(name=>{
+    const dbCompact=canonicalSupplierName(name),dbTokens=tokens(name);
+    const coverage=dbTokens.length?dbTokens.filter(x=>sourceTokens.has(x)).length/dbTokens.length:0;
+    let score=supplierScore(company,name);
+    if(sourceCompact===dbCompact)score=100;
+    else if(coverage===1)score=Math.max(score,dbTokens.length===1?95:98);
+    else if(sourceCompact.includes(dbCompact)||dbCompact.includes(sourceCompact))score=Math.max(score,94);
+    return {name,score,coverage};
+  }).sort((a,b)=>b.score-a.score||b.coverage-a.coverage||a.name.localeCompare(b.name,"it"));
+  return ranked[0]?.score>=75?ranked:null;
+}
+function applySupplierRowsDirect(supplier,score,sourceName){
+  const rows=embeddedContracts.filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
+  if(!rows.length)return false;
+  const cinemaNames=[...new Set(rows.map(x=>x.cinema).filter(Boolean))];
+  const workNames=[...new Set(rows.map(x=>x.workType).filter(Boolean))];
+  $("cinemaSelect").innerHTML=cinemaNames.map((name,i)=>`<option value="matched-c-${i}" selected>${esc(name)}</option>`).join("");
+  $("workSelect").innerHTML=workNames.map((name,i)=>`<option value="matched-w-${i}" selected>${esc(name)}</option>`).join("");
+  $("cinemaSelectionSummary").textContent=`${cinemaNames.length} cinema: ${cinemaNames.join(", ")}`;
+  $("workSelectionSummary").textContent=`${workNames.length} tipologie: ${workNames.join(", ")}`;
+  const frequencies=[...new Set(rows.map(x=>String(x.frequency||"").trim()).filter(Boolean))];
+  const total=rows.reduce((sum,x)=>sum+(Number.isFinite(Number(x.amount))?Number(x.amount):0),0);
+  $("documentCompanyName").value=sourceName||supplier;
+  $("databaseCompanyName").value=supplier;
+  if(sourceName)$("companyName").value=sourceName;
+  $("supplier").value=supplier;
+  $("frequency").value=frequencies.join(" / ");
+  $("contractAmount").value=total.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});
+  lastMatchedWorkNames=[...workNames];
+  const box=$("dbMatchSummary");
+  box.innerHTML=`<div class="${score>=95?"match-exact":"match-probable"}">Ditta DB riconosciuta: ${esc(supplier)} (${score}%)</div><div>${rows.length} righe, ${cinemaNames.length} cinema, ${workNames.length} tipologie. Importo: € ${total.toLocaleString("it-IT",{minimumFractionDigits:2})}</div>`;
+  $("supplierMatchPanel").hidden=true;
+  setTimeout(()=>renderLegalCompliance(),0);
+  return true;
+}
 function autoSelectFromCompany(){
   const documentName=cleanDisplayedCompanyName($("documentCompanyName").value||$("companyName").value);
-  const candidates=supplierCandidates(documentName);
-  const exact=candidates.find(x=>canonicalSupplierName(x.name)===canonicalSupplierName(documentName));
-  const best=exact||candidates[0],second=candidates.find(x=>x!==best);
-  if(!best){showStatus(`Nessuna ditta DB compatibile con: ${documentName}. DB attivo: ${activeContractRows().length} righe.`,"error");return false;}
-  if(exact||best.score>=90&&(!second||best.score-second.score>=4||best.coverage===1&&second.coverage<1)){
-    applySupplierChoice(best.name,best.score,documentName||best.name);return true;
-  }
-  showSupplierCandidates(documentName,candidates);showStatus("Trovate più denominazioni compatibili. Seleziona quella corretta.","error");return false;
+  const ranked=deterministicSupplierMatch(documentName);
+  if(!ranked){showStatus(`Nessuna ditta DB compatibile con: ${documentName}. DB incorporato: ${embeddedContracts.length} righe.`,"error");return false;}
+  const best=ranked[0],second=ranked[1];
+  if(best.score>=90&&(!second||best.score-second.score>=4||best.coverage===1&&second.coverage<1))return applySupplierRowsDirect(best.name,best.score,documentName);
+  showSupplierCandidates(documentName,ranked);showStatus("Trovate più denominazioni compatibili. Seleziona quella corretta.","error");return false;
 }
 document.addEventListener("click",e=>{
   const btn=e.target.closest("[data-supplier]");if(!btn)return;
-  applySupplierChoice(btn.dataset.supplier,Number(btn.dataset.score),$("documentCompanyName").value);
+  applySupplierRowsDirect(btn.dataset.supplier,Number(btn.dataset.score),$("documentCompanyName").value);
 });
 $("cinemaSelect").addEventListener("change",applyContractSuggestion);
 $("workSelect").addEventListener("change",()=>{

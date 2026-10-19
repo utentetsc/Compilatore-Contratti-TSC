@@ -70,3 +70,10 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - DUVRI classificato prima della visura per evitare nomi ricavati dal nome file;
 - fallback del nome file usato solo per file che contengono CCIAA o VISURA;
 - rimosso il vecchio DB inline duplicato.
+
+
+### Versione 0.4.9 - Selezione DB diretta
+- il matching usa esclusivamente il DB incorporato aggiornato;
+- dopo il riconoscimento ricostruisce direttamente gli elenchi con i soli cinema e lavori della ditta;
+- supportati sia nomi completi sia alias brevi ABC/ALPHA;
+- OCR limitato alle sole visure indicate nel nome file come CCIAA o VISURA.
