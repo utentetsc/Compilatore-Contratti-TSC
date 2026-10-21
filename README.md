@@ -122,10 +122,9 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - ricerca limitata alle sezioni collegate al D.M. 37/2008 per evitare falsi positivi.
 
 
-#### Versione 0.5.6 - Tariffari e INPS
-- lettura separata dei tariffari Excel senza alterare il DB Contratti;
-- tariffe straordinarie filtrate per ditta e cinema selezionati;
-- diritti di chiamata specifici del cinema;
-- formattazione INPS singola o multipla;
-- eliminazione della duplicazione “di viaggio di viaggio”;
-- invariati parser documentale, matching DB, controllo camerale e profilo Aree Gialle.
+#### Versione 0.5.7 - Elenchi tariffari
+- tariffe su paragrafi separati;
+- voce Diritto di chiamata come elenco principale;
+- cinema come sottoelenco indentato;
+- svuotamento dei residui storici del master;
+- nessuna modifica a parser, DB, controllo camerale o altre sezioni Word.

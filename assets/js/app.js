@@ -36,50 +36,24 @@ function bindDrop(zoneId,inputId,handler){
   zone.addEventListener("drop",ev=>handler([...ev.dataTransfer.files]));
 }
 
-function normalizeTextKey(v){return String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim()}
-function parseItalianNumber(v){if(typeof v==="number")return Number.isFinite(v)?v:null;const n=Number(String(v||"").replace(/\s/g,"").replace(/\./g,"").replace(",","."));return Number.isFinite(n)?n:null}
+function tariffKey(v){return String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim()}
+function tariffNumber(v){if(typeof v==="number")return Number.isFinite(v)?v:null;const n=Number(String(v||"").replace(/\s/g,"").replace(/\./g,"").replace(",","."));return Number.isFinite(n)?n:null}
 async function readTariffWorkbook(file){
-  if(!window.XLSX)throw new Error("Libreria Excel non disponibile.");
-  const wb=XLSX.read(await file.arrayBuffer(),{type:"array",raw:true}),items=[];let supplier="";
-  for(const name of wb.SheetNames){
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:"",raw:true});
-    const heading=rows.flat().map(v=>String(v||"").trim()).find(v=>/tariffario/i.test(v));
-    if(!supplier&&heading)supplier=heading.replace(/tariffario/i,"").replace(/\b20\d{2}\b/g,"").trim();
-    for(const row of rows){
-      const description=row.map(v=>String(v||"").trim()).find(v=>/[A-Za-zÀ-ÿ]{4}/.test(v));
-      const amount=row.map(parseItalianNumber).find(v=>v!==null&&v>=0);
-      if(description&&amount!==undefined&&amount!==null&&!/tariffario/i.test(description))items.push({description,amount});
-    }
-  }
-  if(!items.length)throw new Error("Nessuna tariffa riconoscibile.");
-  return {fileName:file.name,supplier:supplier||file.name.replace(/\.[^.]+$/,"").replace(/tariffario/i,"").trim(),items};
+ const wb=XLSX.read(await file.arrayBuffer(),{type:"array",raw:true}),items=[];let supplier="";
+ for(const name of wb.SheetNames){const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:"",raw:true});const title=rows.flat().map(String).find(v=>/tariffario/i.test(v));if(!supplier&&title)supplier=title.replace(/tariffario/i,"").replace(/\b20\d{2}\b/g,"").trim();for(const row of rows){const description=row.map(v=>String(v||"").trim()).find(v=>/[A-Za-zÀ-ÿ]{4}/.test(v));const amount=row.map(tariffNumber).find(v=>v!==null&&v>=0);if(description&&amount!==undefined&&amount!==null&&!/tariffario/i.test(description))items.push({description,amount})}}
+ if(!items.length)throw new Error("Nessuna tariffa riconoscibile.");return{supplier,fileName:file.name,items};
 }
-const IT_UNITS=["zero","uno","due","tre","quattro","cinque","sei","sette","otto","nove","dieci","undici","dodici","tredici","quattordici","quindici","sedici","diciassette","diciotto","diciannove"];
-const IT_TENS=["","","venti","trenta","quaranta","cinquanta","sessanta","settanta","ottanta","novanta"];
-function integerToItalian(n){n=Math.round(Number(n)||0);if(n<20)return IT_UNITS[n];if(n<100){let t=IT_TENS[Math.floor(n/10)],u=n%10;if(u===1||u===8)t=t.slice(0,-1);return t+(u?IT_UNITS[u]:"")}if(n<1000){const h=Math.floor(n/100),r=n%100;return(h===1?"":IT_UNITS[h])+"cento"+(r?integerToItalian(r):"")}return String(n)}
-function rateAmount(v){const n=Number(v);return `${n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})} (${integerToItalian(Math.floor(n))}/00)`}
-function selectedCinemaNames(){return [...$("cinemaSelect").selectedOptions].map(o=>o.textContent.trim())}
-function tariffMatchesSupplier(tariff){const candidates=[$("databaseCompanyName").value,$("supplier").value,$("companyName").value];const key=normalizeTextKey(tariff.supplier);return candidates.some(v=>{const x=normalizeTextKey(v);return x&&key&&(x.includes(key)||key.includes(x)||x.split(" ")[0]===key.split(" ")[0])})}
-function buildExtraRatesFromTariffs(){
-  const tariff=loadedTariffs.find(tariffMatchesSupplier)||loadedTariffs.length===1?loadedTariffs.find(tariffMatchesSupplier)||loadedTariffs[0]:null;
-  if(!tariff)return "";
-  const cinemas=selectedCinemaNames().map(normalizeTextKey),lines=[];
-  const ordinary=tariff.items.find(x=>/ordinari|08[:.]?00.*18[:.]?00|ferial/i.test(x.description));
-  const night=tariff.items.find(x=>/notturn|festiv|18[:.]?01.*07[:.]?59/i.test(x.description));
-  if(ordinary)lines.push(`Euro/ora ${rateAmount(ordinary.amount)} per gli interventi di natura straordinaria effettuati dalle ore 08:00 alle ore 18:00 nei giorni feriali;`);
-  if(night)lines.push(`Euro/ora ${rateAmount(night.amount)} per gli interventi effettuati dalle ore 18:01 alle ore 07:59 e nei giorni festivi;`);
-  for(const item of tariff.items.filter(x=>/diritto di chiamata/i.test(x.description))){
-    const cityMatch=item.description.match(/\bsu\s+([A-Za-zÀ-ÿ' ]+?)\s+per\b/i);const city=cityMatch?cityMatch[1].trim():"";
-    if(!city||cinemas.some(x=>x.includes(normalizeTextKey(city))))lines.push(`Euro/chiamata ${rateAmount(item.amount)} per gli interventi urgenti presso TSC ${city||"[DA COMPILARE]"};`);
-  }
-  return lines.slice(0,6).join("\n");
+const N0=["zero","uno","due","tre","quattro","cinque","sei","sette","otto","nove","dieci","undici","dodici","tredici","quattordici","quindici","sedici","diciassette","diciotto","diciannove"],NT=["","","venti","trenta","quaranta","cinquanta","sessanta","settanta","ottanta","novanta"];
+function numberWord(n){n=Math.round(Number(n)||0);if(n<20)return N0[n];if(n<100){let t=NT[Math.floor(n/10)],u=n%10;if(u===1||u===8)t=t.slice(0,-1);return t+(u?N0[u]:"")}return String(n)}
+function rate(v){return `${Number(v).toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})} (${numberWord(v)}/00)`}
+function tariffsForWord(){
+ const candidates=[$("databaseCompanyName").value,$("supplier").value,$("companyName").value].map(tariffKey),tariff=loadedTariffs.find(t=>{const k=tariffKey(t.supplier||t.fileName);return candidates.some(x=>x&&k&&(x.includes(k)||k.includes(x)||x.split(" ")[0]===k.split(" ")[0]))})||(loadedTariffs.length===1?loadedTariffs[0]:null);if(!tariff)return"";
+ const cinemas=[...$("cinemaSelect").selectedOptions].map(o=>tariffKey(o.textContent)),calls=[];
+ const ordinary=tariff.items.find(x=>/ordinari|08[:.]?00.*18[:.]?00|ferial/i.test(x.description)),night=tariff.items.find(x=>/notturn|festiv|18[:.]?01.*07[:.]?59/i.test(x.description));
+ for(const x of tariff.items.filter(x=>/diritto di chiamata/i.test(x.description))){const m=x.description.match(/\bsu\s+([A-Za-zÀ-ÿ' ]+?)\s+per\b/i),city=m?m[1].trim():"";if(city&&cinemas.some(c=>c.includes(tariffKey(city))))calls.push(`Euro/chiamata ${rate(x.amount)} per gli interventi urgenti presso TSC ${city};`)}
+ return [ordinary?`Euro/ora ${rate(ordinary.amount)} per gli interventi di natura straordinaria effettuati dalle ore 08:00 alle ore 18:00 nei giorni feriali;`:"",night?`Euro/ora ${rate(night.amount)} per gli interventi effettuati dalle ore 18:01 alle ore 07:59 e nei giorni festivi;`:"","Diritto di chiamata",...calls].filter(Boolean).slice(0,6).join("\n");
 }
-function normalizeInpsDisplay(v){
-  let x=String(v||"").replace(/\s+/g," ").trim();if(!x)return "";
-  const nums=x.match(/\d{6,15}/g)||[];
-  if(nums.length>=2){const metal=/metal/i.test(x)?nums[0]:nums[0],edile=/edile/i.test(x)?nums[1]:nums[1];return `Metalmeccanico: ${metal} - Edile: ${edile}`}
-  return nums.length===1?nums[0]:x.replace(/metal(?:meccanico)?\s*:?/i,"Metalmeccanico: ").replace(/edile\s*:?/i,"Edile: ");
-}
+function formatInps(v){const x=String(v||"").replace(/\s+/g," ").trim(),nums=x.match(/\d{6,15}/g)||[];if(nums.length>=2)return`Metalmeccanico: ${nums[0]} - Edile: ${nums[1]}`;return nums.length===1?nums[0]:x}
 bindDrop("masterDrop","masterFile",files=>{masterFile=files.find(f=>f.name.toLowerCase().endsWith(".docx"))||null;$("masterName").textContent=masterFile?.name||"Seleziona un file .docx"});
 bindDrop("docsDrop","docsFiles",async files=>{
   supportFiles=files;
@@ -88,16 +62,18 @@ bindDrop("docsDrop","docsFiles",async files=>{
   loadedTariffs=[];
   const excelFiles=files.filter(f=>/\.(xlsx|xls|csv)$/i.test(f.name));
   for(const file of excelFiles){
-    if(/tariff/i.test(file.name)){
-      try{loadedTariffs.push(await readTariffWorkbook(file));showStatus(`Tariffario caricato: ${file.name}.`,"ok")}catch(err){console.error(err);showStatus(`${file.name}: ${err.message||"tariffario non leggibile"}`,"error")}
-      continue;
-    }
+    if(/tariff/i.test(file.name)){try{loadedTariffs.push(await readTariffWorkbook(file));showStatus(`Tariffario caricato: ${file.name}.`,"ok")}catch(err){showStatus(`${file.name}: ${err.message}`,"error")}continue}
     try{
       const contracts=await ContractDbImporter.read(file);
-      setup.contracts=contracts;setup.workTypes=ContractDbImporter.workTypes(contracts);syncCinemasFromContracts();StorageService.save(setup);renderSetup();
+      setup.contracts=contracts;
+      setup.workTypes=ContractDbImporter.workTypes(contracts);
+      syncCinemasFromContracts();
+      StorageService.save(setup);
+      renderSetup();
       showStatus(`DB Contratti caricato: ${contracts.length} abbinamenti, ${setup.workTypes.length} tipologie e cinema sincronizzati.`,"ok");
     }catch(err){
-      try{loadedTariffs.push(await readTariffWorkbook(file));showStatus(`Tariffario caricato: ${file.name}.`,"ok")}catch{console.error(err);showStatus(`${file.name}: non riconosciuto come DB Contratti o tariffario.`,"error")}
+      console.error(err);
+      showStatus(`${file.name}: non riconosciuto come DB Contratti. ${err.message||""}`,"error");
     }
   }
 });
@@ -446,8 +422,7 @@ $("extractBtn").onclick=async()=>{
   const documentFiles=supportFiles.filter(f=>!/\.(xlsx|xls|csv)$/i.test(f.name));
   if(!documentFiles.length){showStatus("Database Excel importato. Aggiungi visura, polizza o DURC per recuperare altri dati.","ok");return}
   const result=await DocumentParser.extract(documentFiles,(name,n,total)=>showStatus(`Lettura ${n}/${total}: ${name}`));
-  Object.entries(result.values).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});
-  if($("inpsPosition").value)$("inpsPosition").value=normalizeInpsDisplay($("inpsPosition").value);
+  Object.entries(result.values).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});if($("inpsPosition").value)$("inpsPosition").value=formatInps($("inpsPosition").value);
   const extractedCompany=cleanDisplayedCompanyName(result.values.companyName||$("companyName").value);
   $("documentCompanyName").value=extractedCompany;
   const dbAutoMatched=autoSelectFromCompany();
@@ -474,7 +449,7 @@ function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/$
 // Motore separato: assets/js/yellow-word-generator.js
 // ============================================================
 function buildData(){const selected=selectedCinemas();const works=selectedWorkTypes();const c=selected[0]||{};const w=works[0]||{};return {
-  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),POSIZIONE_INPS:normalizeInpsDisplay(document.getElementById("inpsPosition")?.value||""),POSIZIONE_INAIL:document.getElementById("inailPosition")?.value||"",EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||"",TELEFONO_REPERIBILITA:document.getElementById("emergencyPhone")?.value||"",COSTI_SICUREZZA:document.getElementById("safetyCosts")?.value||"",TARIFFE_STRAORDINARIE:buildExtraRatesFromTariffs()||(document.getElementById("extraRates")?.value||""),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
+  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),POSIZIONE_INPS:formatInps(document.getElementById("inpsPosition")?.value||""),POSIZIONE_INAIL:document.getElementById("inailPosition")?.value||"",EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||"",TELEFONO_REPERIBILITA:document.getElementById("emergencyPhone")?.value||"",COSTI_SICUREZZA:document.getElementById("safetyCosts")?.value||"",TARIFFE_STRAORDINARIE:tariffsForWord()||(document.getElementById("extraRates")?.value||""),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
 $("generateBtn").onclick=async()=>{
