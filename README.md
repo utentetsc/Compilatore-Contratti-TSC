@@ -128,3 +128,11 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - creazione automatica dei paragrafi aggiuntivi senza sovrascrivere il disclaimer successivo;
 - rimozione dei pallini vuoti e dei residui storici;
 - nessuna modifica a parser, DB, controllo camerale o altre aree Word.
+
+
+#### Versione 0.5.9 - Scadenza, durata ed elenchi
+- aggiunta area gialla per la data di scadenza nel master incluso;
+- compilazione DATA_FINE e calcolo automatico della durata effettiva;
+- conservazione delle righe tariffarie fino al generatore Word;
+- diritto unico come terzo punto oppure diritti diversi come sottoelenco;
+- nessuna modifica a parser, DB, matching ditte o controllo camerale.
