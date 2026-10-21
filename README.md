@@ -120,3 +120,12 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - OCR di tutte le pagine dei file camerali/visure, anche se il PDF contiene testo parziale;
 - riconoscimento delle lettere D.M. 37/2008 da “lettera X”, elenchi A-G e righe A) ... G);
 - ricerca limitata alle sezioni collegate al D.M. 37/2008 per evitare falsi positivi.
+
+
+#### Versione 0.5.6 - Tariffari e INPS
+- lettura separata dei tariffari Excel senza alterare il DB Contratti;
+- tariffe straordinarie filtrate per ditta e cinema selezionati;
+- diritti di chiamata specifici del cinema;
+- formattazione INPS singola o multipla;
+- eliminazione della duplicazione “di viaggio di viaggio”;
+- invariati parser documentale, matching DB, controllo camerale e profilo Aree Gialle.
