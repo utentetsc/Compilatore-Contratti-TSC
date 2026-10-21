@@ -39,19 +39,38 @@ function bindDrop(zoneId,inputId,handler){
 function tariffKey(v){return String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim()}
 function tariffNumber(v){if(typeof v==="number")return Number.isFinite(v)?v:null;const n=Number(String(v||"").replace(/\s/g,"").replace(/\./g,"").replace(",","."));return Number.isFinite(n)?n:null}
 async function readTariffWorkbook(file){
- const wb=XLSX.read(await file.arrayBuffer(),{type:"array",raw:true}),items=[];let supplier="";
- for(const name of wb.SheetNames){const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:"",raw:true});const title=rows.flat().map(String).find(v=>/tariffario/i.test(v));if(!supplier&&title)supplier=title.replace(/tariffario/i,"").replace(/\b20\d{2}\b/g,"").trim();for(const row of rows){const description=row.map(v=>String(v||"").trim()).find(v=>/[A-Za-zÀ-ÿ]{4}/.test(v));const amount=row.map(tariffNumber).find(v=>v!==null&&v>=0);if(description&&amount!==undefined&&amount!==null&&!/tariffario/i.test(description))items.push({description,amount})}}
- if(!items.length)throw new Error("Nessuna tariffa riconoscibile.");return{supplier,fileName:file.name,items};
+  const wb=XLSX.read(await file.arrayBuffer(),{type:"array",raw:true}),items=[];let supplier="";
+  for(const name of wb.SheetNames){
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:"",raw:true});
+    const title=rows.flat().map(v=>String(v||"").trim()).find(v=>/tariffario/i.test(v));
+    if(!supplier&&title)supplier=title.replace(/tariffario/i,"").replace(/\b20\d{2}\b/g,"").trim();
+    for(const row of rows){
+      const description=row.map(v=>String(v||"").trim()).find(v=>/[A-Za-zÀ-ÿ]{4}/.test(v));
+      const amount=row.map(tariffNumber).find(v=>v!==null&&v>=0);
+      if(description&&amount!==undefined&&amount!==null&&!/tariffario/i.test(description))items.push({description,amount});
+    }
+  }
+  if(!items.length)throw new Error("Nessuna tariffa riconoscibile.");
+  return {supplier:supplier||file.name.replace(/\.[^.]+$/,"").replace(/tariffario/i,"").trim(),fileName:file.name,items};
 }
-const N0=["zero","uno","due","tre","quattro","cinque","sei","sette","otto","nove","dieci","undici","dodici","tredici","quattordici","quindici","sedici","diciassette","diciotto","diciannove"],NT=["","","venti","trenta","quaranta","cinquanta","sessanta","settanta","ottanta","novanta"];
-function numberWord(n){n=Math.round(Number(n)||0);if(n<20)return N0[n];if(n<100){let t=NT[Math.floor(n/10)],u=n%10;if(u===1||u===8)t=t.slice(0,-1);return t+(u?N0[u]:"")}return String(n)}
-function rate(v){return `${Number(v).toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})} (${numberWord(v)}/00)`}
-function tariffsForWord(){
- const candidates=[$("databaseCompanyName").value,$("supplier").value,$("companyName").value].map(tariffKey),tariff=loadedTariffs.find(t=>{const k=tariffKey(t.supplier||t.fileName);return candidates.some(x=>x&&k&&(x.includes(k)||k.includes(x)||x.split(" ")[0]===k.split(" ")[0]))})||(loadedTariffs.length===1?loadedTariffs[0]:null);if(!tariff)return"";
- const cinemas=[...$("cinemaSelect").selectedOptions].map(o=>tariffKey(o.textContent)),calls=[];
- const ordinary=tariff.items.find(x=>/ordinari|08[:.]?00.*18[:.]?00|ferial/i.test(x.description)),night=tariff.items.find(x=>/notturn|festiv|18[:.]?01.*07[:.]?59/i.test(x.description));
- for(const x of tariff.items.filter(x=>/diritto di chiamata/i.test(x.description))){const m=x.description.match(/\bsu\s+([A-Za-zÀ-ÿ' ]+?)\s+per\b/i),city=m?m[1].trim():"";if(city&&cinemas.some(c=>c.includes(tariffKey(city))))calls.push(`Euro/chiamata ${rate(x.amount)} per gli interventi urgenti presso TSC ${city};`)}
- return [ordinary?`Euro/ora ${rate(ordinary.amount)} per gli interventi di natura straordinaria effettuati dalle ore 08:00 alle ore 18:00 nei giorni feriali;`:"",night?`Euro/ora ${rate(night.amount)} per gli interventi effettuati dalle ore 18:01 alle ore 07:59 e nei giorni festivi;`:"","Diritto di chiamata",...calls].filter(Boolean).slice(0,6).join("\n");
+const TAR_UNITS=["zero","uno","due","tre","quattro","cinque","sei","sette","otto","nove","dieci","undici","dodici","tredici","quattordici","quindici","sedici","diciassette","diciotto","diciannove"];
+const TAR_TENS=["","","venti","trenta","quaranta","cinquanta","sessanta","settanta","ottanta","novanta"];
+function tariffNumberWord(n){n=Math.round(Number(n)||0);if(n<20)return TAR_UNITS[n];if(n<100){let t=TAR_TENS[Math.floor(n/10)],u=n%10;if(u===1||u===8)t=t.slice(0,-1);return t+(u?TAR_UNITS[u]:"")}return String(n)}
+function tariffAmount(v){const n=Number(v);return `${n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})} (${tariffNumberWord(n)}/00)`}
+function tariffMatchesSupplier(t){const k=tariffKey(t.supplier||t.fileName),names=[$("databaseCompanyName").value,$("supplier").value,$("companyName").value].map(tariffKey);return names.some(x=>x&&k&&(x.includes(k)||k.includes(x)||x.split(" ")[0]===k.split(" ")[0]))}
+function tariffLinesForWord(){
+  const tariff=loadedTariffs.find(tariffMatchesSupplier)||(loadedTariffs.length===1?loadedTariffs[0]:null);if(!tariff)return"";
+  const cinemas=[...$("cinemaSelect").selectedOptions].map(o=>tariffKey(o.textContent)),calls=[];
+  const ordinary=tariff.items.find(x=>/ordinari|08[:.]?00.*18[:.]?00|ferial/i.test(x.description));
+  const night=tariff.items.find(x=>/notturn|festiv|18[:.]?01.*07[:.]?59/i.test(x.description));
+  for(const x of tariff.items.filter(x=>/diritto di chiamata/i.test(x.description))){const m=x.description.match(/\bsu\s+([A-Za-zÀ-ÿ' ]+?)\s+per\b/i),city=m?m[1].trim():"";if(!city||cinemas.some(c=>c.includes(tariffKey(city))))calls.push({city,amount:x.amount})}
+  const lines=[];
+  if(ordinary)lines.push(`Euro/ora ${tariffAmount(ordinary.amount)} per gli interventi di natura straordinaria effettuati dalle ore 08:00 alle ore 18:00 nei giorni feriali;`);
+  if(night)lines.push(`Euro/ora ${tariffAmount(night.amount)} per gli interventi effettuati dalle ore 18:01 alle ore 07:59 e nei giorni festivi;`);
+  const unique=[...new Set(calls.map(x=>Number(x.amount).toFixed(2)))];
+  if(calls.length&&unique.length===1)lines.push(`Euro/chiamata ${tariffAmount(calls[0].amount)} quale diritto fisso di chiamata per gli interventi urgenti;`);
+  else if(calls.length){lines.push("Diritto di chiamata:");for(const x of calls)lines.push(`Euro/chiamata ${tariffAmount(x.amount)} per gli interventi urgenti presso TSC ${x.city};`)}
+  return lines.join("\n");
 }
 function formatInps(v){const x=String(v||"").replace(/\s+/g," ").trim(),nums=x.match(/\d{6,15}/g)||[];if(nums.length>=2)return`Metalmeccanico: ${nums[0]} - Edile: ${nums[1]}`;return nums.length===1?nums[0]:x}
 bindDrop("masterDrop","masterFile",files=>{masterFile=files.find(f=>f.name.toLowerCase().endsWith(".docx"))||null;$("masterName").textContent=masterFile?.name||"Seleziona un file .docx"});
@@ -449,7 +468,7 @@ function formatDate(v){if(!v)return "";const [y,m,d]=v.split("-");return `${d}/$
 // Motore separato: assets/js/yellow-word-generator.js
 // ============================================================
 function buildData(){const selected=selectedCinemas();const works=selectedWorkTypes();const c=selected[0]||{};const w=works[0]||{};return {
-  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),POSIZIONE_INPS:formatInps(document.getElementById("inpsPosition")?.value||""),POSIZIONE_INAIL:document.getElementById("inailPosition")?.value||"",EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||"",TELEFONO_REPERIBILITA:document.getElementById("emergencyPhone")?.value||"",COSTI_SICUREZZA:document.getElementById("safetyCosts")?.value||"",TARIFFE_STRAORDINARIE:tariffsForWord()||(document.getElementById("extraRates")?.value||""),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
+  NUMERO_CONTRATTO:value("contractNumber"),DATA_CONTRATTO:formatDate(value("contractDate")),RAGIONE_SOCIALE:value("companyName"),DENOMINAZIONE_DOCUMENTI:value("documentCompanyName"),DENOMINAZIONE_DB:value("databaseCompanyName"),PARTITA_IVA:value("vatNumber"),CODICE_FISCALE:value("fiscalCode"),REA:value("rea"),SEDE_LEGALE:value("registeredOffice"),PEC:value("pec"),LEGALE_RAPPRESENTANTE:value("legalRepresentative"),COMPAGNIA_ASSICURATIVA:value("insuranceCompany"),NUMERO_POLIZZA:value("policyNumber"),SCADENZA_POLIZZA:formatDate(value("policyExpiry")),MASSIMALE:value("policyLimit"),DITTA:value("supplier"),FREQUENZA:value("frequency"),IMPORTO_CONTRATTO:value("contractAmount"),POSIZIONE_INPS:formatInps(document.getElementById("inpsPosition")?.value||""),POSIZIONE_INAIL:document.getElementById("inailPosition")?.value||"",EMAIL:document.getElementById("email")?.value||"",TELEFONO:document.getElementById("phone")?.value||"",TELEFONO_REPERIBILITA:document.getElementById("emergencyPhone")?.value||"",COSTI_SICUREZZA:document.getElementById("safetyCosts")?.value||"",TARIFFE_STRAORDINARIE:tariffLinesForWord()||(document.getElementById("extraRates")?.value||""),PROTOCOLLO_DURC:value("durcProtocol"),SCADENZA_DURC:formatDate(value("durcExpiry")),ESITO_DURC:value("durcStatus"),NOME_CINEMA:selected.map(x=>x.name).join(", "),NOMI_CINEMA:selected.map(x=>x.name).join(", "),INDIRIZZO_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),INDIRIZZI_CINEMA:selected.map(x=>x.address).filter(Boolean).join("; "),CITTA_CINEMA:selected.map(x=>x.city).filter(Boolean).join(", "),TIPO_LAVORAZIONE:works.map(x=>x.name).join(", "),TIPOLOGIE_LAVORAZIONE:works.map(x=>x.name).join(", "),DESCRIZIONE_LAVORAZIONE:works.map(x=>x.description).filter(Boolean).join("; "),DATA_INIZIO:formatDate(value("startDate")),DATA_FINE:formatDate(value("endDate"))
 }}
 function showStatus(t,type=""){const s=$("status");s.textContent=t;s.className=`status ${type}`}
 $("generateBtn").onclick=async()=>{

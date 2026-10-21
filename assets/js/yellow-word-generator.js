@@ -1,5 +1,5 @@
 const YellowAreaWordGenerator=(()=>{
- const BUILD="yellow-areas-v4.3-tariff-lists-2026-10-21",W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XML="http://www.w3.org/XML/1998/namespace";
+ const BUILD="yellow-areas-v4.3-structured-tariffs-2026-10-21",W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XML="http://www.w3.org/XML/1998/namespace";
  const REQUIRED=new Set(["POSIZIONE_INPS","DATI_POLIZZA","MASSIMALE","TELEFONO_REPERIBILITA"]);
  console.info("Word generator build:",BUILD);
  const clean=v=>String(v??"").replace(/\s+/g," ").trim();
@@ -9,16 +9,29 @@ const YellowAreaWordGenerator=(()=>{
  function scan(path,xml){const doc=new DOMParser().parseFromString(xml,"application/xml"),raw=[];if(doc.getElementsByTagName("parsererror").length)throw Error(`XML non leggibile: ${path}`);els(doc,"p").forEach((p,pi)=>{const runs=els(p,"r").map(r=>({r,text:txt(r),y:yellow(r)})).filter(x=>x.text);for(let i=0;i<runs.length;){if(!runs[i].y){i++;continue}const first=i;let text="";while(i<runs.length&&runs[i].y)text+=runs[i++].text;raw.push({path,doc,p,pi,runs,first,last:i-1,text})}});return{path,doc,raw}}
  const area=(field,parts,mode="single")=>({field,parts,mode});
  function profile(raw){const m=raw.filter(x=>x.path==="word/document.xml"),at=i=>m.filter(x=>x.pi===i),range=(a,b)=>m.filter(x=>x.pi>=a&&x.pi<=b),a=[],add=(f,p,mode)=>p.length&&a.push(area(f,p,mode));
-  add("OGGETTO_CONTRATTO",at(0));add("DATA_CONTRATTO",at(1));add("ANAGRAFICA_COMPLETA_APPALTATORE",at(6));add("DESCRIZIONE_LAVORAZIONI",at(11));add("POSIZIONE_INPS",at(17));add("ELENCO_LAVORAZIONI",range(28,32),"lines");add("DATI_POLIZZA",[...at(54),...at(55).slice(0,1)],"joined");add("MASSIMALE",at(55).slice(1));add("IMPORTO_CONTRATTO",at(122));add("COSTI_SICUREZZA",at(125));add("TARIFFE_STRAORDINARIE",range(129,134),"lines");const d=at(145);d[0]&&add("DURATA_CONTRATTO",[d[0]]);d[1]&&add("DATA_INIZIO",[d[1]]);add("RAGIONE_SOCIALE",at(172));add("SEDE_LEGALE",at(173));add("TELEFONO",at(174));add("EMAIL",at(175));add("PEC",at(176));add("TELEFONO_REPERIBILITA",at(177));return a}
+  add("OGGETTO_CONTRATTO",at(0));add("DATA_CONTRATTO",at(1));add("ANAGRAFICA_COMPLETA_APPALTATORE",at(6));add("DESCRIZIONE_LAVORAZIONI",at(11));add("POSIZIONE_INPS",at(17));add("ELENCO_LAVORAZIONI",range(28,32),"lines");add("DATI_POLIZZA",[...at(54),...at(55).slice(0,1)],"joined");add("MASSIMALE",at(55).slice(1));add("IMPORTO_CONTRATTO",at(122));add("COSTI_SICUREZZA",at(125));add("TARIFFE_STRAORDINARIE",range(129,133),"tariffs");const d=at(145);d[0]&&add("DURATA_CONTRATTO",[d[0]]);d[1]&&add("DATA_INIZIO",[d[1]]);add("RAGIONE_SOCIALE",at(172));add("SEDE_LEGALE",at(173));add("TELEFONO",at(174));add("EMAIL",at(175));add("PEC",at(176));add("TELEFONO_REPERIBILITA",at(177));return a}
  function setRun(r,v){[...r.childNodes].filter(n=>n.namespaceURI===W&&["t","br","tab"].includes(n.localName)).forEach(n=>r.removeChild(n));String(v).split("\n").forEach((p,i)=>{if(i)r.appendChild(r.ownerDocument.createElementNS(W,"w:br"));const t=r.ownerDocument.createElementNS(W,"w:t");t.setAttributeNS(XML,"xml:space","preserve");t.textContent=p;r.appendChild(t)})}
  const clear=p=>{for(let i=p.first;i<=p.last;i++)setRun(p.runs[i].r,"")},write=(p,v)=>{setRun(p.runs[p.first].r,v);for(let i=p.first+1;i<=p.last;i++)setRun(p.runs[i].r,"")};
+ function clearWholeParagraph(p){const runs=els(p,"r");runs.forEach(r=>setRun(r,""));return runs[0]||null}
+ function writeWholeParagraph(p,value){let r=clearWholeParagraph(p);if(!r){r=p.ownerDocument.createElementNS(W,"w:r");p.appendChild(r)}setRun(r,value)}
  function setListLevel(p,level){
-  let ppr=els(p,"pPr")[0];if(!ppr){ppr=p.ownerDocument.createElementNS(W,"w:pPr");p.insertBefore(ppr,p.firstChild)}
-  let numPr=els(ppr,"numPr")[0];if(!numPr){numPr=p.ownerDocument.createElementNS(W,"w:numPr");ppr.insertBefore(numPr,ppr.firstChild)}
-  let ilvl=els(numPr,"ilvl")[0];if(!ilvl){ilvl=p.ownerDocument.createElementNS(W,"w:ilvl");numPr.appendChild(ilvl)}ilvl.setAttributeNS(W,"w:val",String(level));
-  let numId=els(numPr,"numId")[0];if(!numId){numId=p.ownerDocument.createElementNS(W,"w:numId");numPr.appendChild(numId)}numId.setAttributeNS(W,"w:val","11");
+   let ppr=els(p,"pPr")[0];if(!ppr){ppr=p.ownerDocument.createElementNS(W,"w:pPr");p.insertBefore(ppr,p.firstChild)}
+   let numPr=els(ppr,"numPr")[0];if(!numPr){numPr=p.ownerDocument.createElementNS(W,"w:numPr");ppr.insertBefore(numPr,ppr.firstChild)}
+   let ilvl=els(numPr,"ilvl")[0];if(!ilvl){ilvl=p.ownerDocument.createElementNS(W,"w:ilvl");numPr.appendChild(ilvl)}ilvl.setAttributeNS(W,"w:val",String(level));
+   let numId=els(numPr,"numId")[0];if(!numId){numId=p.ownerDocument.createElementNS(W,"w:numId");numPr.appendChild(numId)}numId.setAttributeNS(W,"w:val","11");
  }
- function apply(a,v){if(a.mode==="lines"){const l=String(v).split("\n");a.parts.forEach((p,i)=>{write(p,l[i]||"");if(a.field==="TARIFFE_STRAORDINARIE")setListLevel(p.p,i>=3?1:0)})}else if(a.mode==="joined"){write(a.parts[0],v);a.parts.slice(1).forEach(clear)}else{write(a.parts[0],v);a.parts.slice(1).forEach(clear)}}
+ function cloneTariffParagraph(base,before){const clone=base.cloneNode(true);before.parentNode.insertBefore(clone,before);writeWholeParagraph(clone,"");return clone}
+ function applyTariffList(a,value){
+   const lines=String(value||"").split("\n").map(x=>x.trim()).filter(Boolean),baseParts=a.parts,paragraphs=baseParts.map(x=>x.p),doc=baseParts[0]?.doc;
+   if(!paragraphs.length)return;
+   // Remove every fragment from the five historical tariff paragraphs.
+   paragraphs.forEach(p=>writeWholeParagraph(p,""));
+   const allPs=els(doc,"p"),disclaimer=allPs[134];
+   while(paragraphs.length<lines.length&&disclaimer)paragraphs.push(cloneTariffParagraph(paragraphs[paragraphs.length-1],disclaimer));
+   const special=lines[2]==="Diritto di chiamata:";
+   paragraphs.forEach((p,i)=>{const line=lines[i]||"";writeWholeParagraph(p,line);if(line)setListLevel(p,special&&i>=3?1:0);else{const ppr=els(p,"pPr")[0],numPr=ppr&&els(ppr,"numPr")[0];if(numPr)numPr.parentNode.removeChild(numPr)}});
+ }
+ function apply(a,v){if(a.mode==="tariffs"){applyTariffList(a,v)}else if(a.mode==="lines"){const l=String(v).split("\n");a.parts.forEach((p,i)=>write(p,l[i]||""))}else if(a.mode==="joined"){write(a.parts[0],v);a.parts.slice(1).forEach(clear)}else{write(a.parts[0],v);a.parts.slice(1).forEach(clear)}}
  function setParagraph(p,value,highlight=false){const runs=els(p,"r");let r=runs[0];if(!r){r=p.ownerDocument.createElementNS(W,"w:r");p.appendChild(r)}runs.slice(1).forEach(x=>setRun(x,""));setRun(r,value);if(highlight){let rpr=els(r,"rPr")[0];if(!rpr){rpr=p.ownerDocument.createElementNS(W,"w:rPr");r.insertBefore(rpr,r.firstChild)}let h=els(rpr,"highlight")[0];if(!h){h=p.ownerDocument.createElementNS(W,"w:highlight");rpr.appendChild(h)}h.setAttributeNS(W,"w:val","yellow")}}
  function cleanAddress(v){return clean(v).replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"").replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2").replace(/\bint\.?\s*(\d+)/i,"int. $1").replace(/\s*,\s*/g,", ").replace(/\s{2,}/g," ").replace(/[•]+/g,"").trim().replace(/[.,;]+$/g,"")}
  function money(v){const n=Number(String(v||"").replace(/\./g,"").replace(",","."));return Number.isFinite(n)?n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2}):clean(v)}

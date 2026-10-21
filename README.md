@@ -122,9 +122,9 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - ricerca limitata alle sezioni collegate al D.M. 37/2008 per evitare falsi positivi.
 
 
-#### Versione 0.5.7 - Elenchi tariffari
-- tariffe su paragrafi separati;
-- voce Diritto di chiamata come elenco principale;
-- cinema come sottoelenco indentato;
-- svuotamento dei residui storici del master;
-- nessuna modifica a parser, DB, controllo camerale o altre sezioni Word.
+#### Versione 0.5.8 - Elenchi tariffari definitivi
+- diritto di chiamata unico: terzo punto principale;
+- diritti diversi per cinema: intestazione principale e sottoelenco;
+- creazione automatica dei paragrafi aggiuntivi senza sovrascrivere il disclaimer successivo;
+- rimozione dei pallini vuoti e dei residui storici;
+- nessuna modifica a parser, DB, controllo camerale o altre aree Word.
