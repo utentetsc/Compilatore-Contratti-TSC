@@ -136,3 +136,11 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - conservazione delle righe tariffarie fino al generatore Word;
 - diritto unico come terzo punto oppure diritti diversi come sottoelenco;
 - nessuna modifica a parser, DB, matching ditte o controllo camerale.
+
+
+#### Versione 0.6.0 - Certificati CCIAA testuali
+- priorità massima al Certificato di iscrizione CCIAA quando contiene testo digitale;
+- estrazione diretta da Denominazione, Sede, REA e Domicilio digitale/PEC;
+- esclusione delle intestazioni Attività e Dati anagrafici dai nomi aziendali;
+- OCR solo se il testo digitale è insufficiente o non contiene dati D.M. 37/2008;
+- mantenute integralmente scadenza, durata ed elenchi tariffari della v0.5.9.

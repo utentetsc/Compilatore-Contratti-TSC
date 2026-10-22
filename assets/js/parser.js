@@ -15,6 +15,7 @@ const DocumentParser = (() => {
   function first(text,res){for(const re of res){const m=text.match(re);if(m?.[1])return clean(m[1])}return ""}
   function documentType(text,file){
     const hay=`${file?.name||""} ${String(text||"").slice(0,5000)}`.toLowerCase();
+    if(/cert(?:ificato)?(?:\s+di)?\s+(?:iscrizione|vigenza)|cert\.?\s+uso|uso gare|certificato camerale/.test(hay))return "certificato";
     if(/duvri|ditta aggiudicataria|appaltatore\s*-\s*esecutori|anagrafica aziendale/.test(hay))return "duvri";
     if(/visura|camera di commercio|registro imprese|cciaa/.test(hay))return "visura";
     if(/documento unico di regolarit|durc|inps_|inail_/.test(hay))return "durc";
@@ -38,7 +39,7 @@ const DocumentParser = (() => {
   function normalizeField(field,value){
     value=clean(value);
     if(field==="companyName"){
-      if(/^(via|viale|corso|piazza|strada|localita|sede legale|codice fiscale|numero d.iscrizione|registro imprese|partita iva|dati per duvri)\b/i.test(value))return "";
+      if(/^(via|viale|corso|piazza|strada|localita|sede legale|codice fiscale|numero d.iscrizione|registro imprese|partita iva|dati per duvri|attivit[aà]|stato attivit[aà]|data inizio attivit[aà]|dati anagrafici|l.impresa in cifre|forma giuridica|sede)\b/i.test(value))return "";
       return titleWords(value);
     }
     if(field==="registeredOffice")return normalizeAddress(value);
@@ -59,6 +60,12 @@ const DocumentParser = (() => {
     ];
     for(const re of reaPatterns){const m=text.match(re);if(m){add("rea",`${m[1].toUpperCase()}-${m[2]}`,.995);break}}
 
+    if(sourceType==="certificato"){
+      add("companyName",first(text,[/(?:^|\s)denominazione\s*:\s*([A-Z0-9À-Ü][A-Z0-9À-Ü&'.\- ]{1,100}?)(?=\s+(?:forma\s+giuridica|sede|codice\s+fiscale|rea|domicilio\s+digitale|pec)|$)/i]),1.0);
+      add("rea",first(text,[/(?:repertorio\s+economico\s+amministrativo|numero\s+rea|rea)\s*[:\-]?\s*([A-Z]{2}\s*[-–/]?\s*\d{4,10})/i]),1.0);
+      add("registeredOffice",first(text,[/(?:^|\s)sede\s*:\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 ,'\.\/-]{5,150}?)(?=\s+(?:domicilio\s+digitale|pec|costituita|codice\s+fiscale|rea)|$)/i]),.995);
+      add("pec",first(text,[/(?:domicilio\s+digitale\s*\/\s*pec|pec)\s*:\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i]),1.0);
+    }
     add("companyName",first(text,[new RegExp("(?:denominazione|ragione\\s+sociale)\\s*[:\\-]?\\s*([A-Z0-9À-Ü&'. /-]{3,100}?)"+stop,"i"),/(?:impresa)\s*[:\-]?\s*([A-Z0-9À-Ü&'. /-]{3,80})/i]),.86);
     add("vatNumber",first(text,[/(?:partita\s+iva|p\.?\s*iva)\s*[:\-]?\s*(?:IT\s*)?([0-9]{11})/i]),.96);
     add("fiscalCode",first(text,[/(?:codice\s+fiscale|c\.?f\.?)\s*[:\-]?\s*([A-Z0-9]{11,16})/i]),.94);
@@ -107,10 +114,10 @@ const DocumentParser = (() => {
   async function extract(files,onProgress){const all=[];for(let i=0;i<files.length;i++){const f=files[i];onProgress?.(f.name,i+1,files.length);try{const text=await fileText(f);all.push(...extractFromText(text,f))}catch(err){all.push({error:true,source:f.name,message:err.message})}}return merge(all)}
   function sourcePriority(field,type){
     const rules={
-      companyName:{visura:500,duvri:300,altro:100,polizza:50,durc:50},
-      registeredOffice:{visura:500,duvri:300,altro:100,polizza:50,durc:50},
-      legalRepresentative:{visura:500,duvri:350,altro:100,polizza:40,durc:40},
-      vatNumber:{visura:500,duvri:300,durc:150,altro:100},fiscalCode:{visura:500,duvri:300,durc:150,altro:100},rea:{visura:500,duvri:250,altro:100},pec:{visura:500,duvri:350,altro:100},
+      companyName:{certificato:700,visura:500,duvri:300,altro:100,polizza:50,durc:50},
+      registeredOffice:{certificato:700,visura:500,duvri:300,altro:100,polizza:50,durc:50},
+      legalRepresentative:{certificato:650,visura:500,duvri:350,altro:100,polizza:40,durc:40},
+      vatNumber:{certificato:700,visura:500,duvri:300,durc:150,altro:100},fiscalCode:{certificato:700,visura:500,duvri:300,durc:150,altro:100},rea:{certificato:700,visura:500,duvri:250,altro:100},pec:{certificato:700,visura:500,duvri:350,altro:100},
       phone:{duvri:500,visura:250,altro:100},email:{duvri:500,visura:250,altro:100},inpsPosition:{duvri:500,durc:400,visura:300,altro:100},inailPosition:{duvri:500,durc:400,visura:300,altro:100},
       insuranceCompany:{polizza:500,duvri:250,altro:100},policyNumber:{polizza:500,altro:100},policyExpiry:{polizza:500,altro:100},policyLimit:{polizza:500,altro:100},
       durcProtocol:{durc:500,altro:100},durcExpiry:{durc:500,altro:100},durcStatus:{durc:500,altro:100}
