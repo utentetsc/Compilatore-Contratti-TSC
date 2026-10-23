@@ -144,3 +144,12 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - esclusione delle intestazioni Attività e Dati anagrafici dai nomi aziendali;
 - OCR solo se il testo digitale è insufficiente o non contiene dati D.M. 37/2008;
 - mantenute integralmente scadenza, durata ed elenchi tariffari della v0.5.9.
+
+
+#### Versione 0.6.2 - Sede, tariffe territoriali e città firma
+- sede legale fermata prima di domicilio digitale/PEC e numero REA;
+- nome del file tariffario prioritario rispetto al titolo interno del foglio;
+- associazione Casamassima (BA) alla tariffa Bari;
+- diritti distinti per cinema quando gli importi selezionati differiscono;
+- città della firma ricavata anche dagli indirizzi nel formato Napoli (NA), Via...;
+- mantenute le correzioni assicurative del parser v0.6.1.

@@ -51,7 +51,10 @@ async function readTariffWorkbook(file){
     }
   }
   if(!items.length)throw new Error("Nessuna tariffa riconoscibile.");
-  return {supplier:supplier||file.name.replace(/\.[^.]+$/,"").replace(/tariffario/i,"").trim(),fileName:file.name,items};
+  const filenameBase=file.name.replace(/\.[^.]+$/,"");
+  const parenthesized=filenameBase.match(/\(([^)]+)\)\s*$/)?.[1]?.trim()||"";
+  const filenameSupplier=parenthesized||filenameBase.replace(/the\s+space\s+cinema/ig,"").replace(/tariffario/ig,"").trim();
+  return {supplier:filenameSupplier||supplier,fileName:file.name,items};
 }
 const TAR_UNITS=["zero","uno","due","tre","quattro","cinque","sei","sette","otto","nove","dieci","undici","dodici","tredici","quattordici","quindici","sedici","diciassette","diciotto","diciannove"];
 const TAR_TENS=["","","venti","trenta","quaranta","cinquanta","sessanta","settanta","ottanta","novanta"];
@@ -60,16 +63,24 @@ function tariffAmount(v){const n=Number(v);return `${n.toLocaleString("it-IT",{m
 function tariffMatchesSupplier(t){const k=tariffKey(t.supplier||t.fileName),names=[$("databaseCompanyName").value,$("supplier").value,$("companyName").value].map(tariffKey);return names.some(x=>x&&k&&(x.includes(k)||k.includes(x)||x.split(" ")[0]===k.split(" ")[0]))}
 function tariffLinesForWord(){
   const tariff=loadedTariffs.find(tariffMatchesSupplier)||(loadedTariffs.length===1?loadedTariffs[0]:null);if(!tariff)return"";
-  const cinemas=[...$("cinemaSelect").selectedOptions].map(o=>tariffKey(o.textContent)),calls=[];
+  const selected=[...$("cinemaSelect").selectedOptions].map(o=>o.textContent.trim()),calls=[];
   const ordinary=tariff.items.find(x=>/ordinari|08[:.]?00.*18[:.]?00|ferial/i.test(x.description));
   const night=tariff.items.find(x=>/notturn|festiv|18[:.]?01.*07[:.]?59/i.test(x.description));
-  for(const x of tariff.items.filter(x=>/diritto di chiamata/i.test(x.description))){const m=x.description.match(/\bsu\s+([A-Za-zÀ-ÿ' ]+?)\s+per\b/i),city=m?m[1].trim():"";if(!city||cinemas.some(c=>c.includes(tariffKey(city))))calls.push({city,amount:x.amount})}
+  const callRows=tariff.items.filter(x=>/diritto di chiamata/i.test(x.description)).map(x=>{const m=x.description.match(/\bsu\s+([A-Za-zÀ-ÿ' ]+?)\s+per\b/i);return {city:m?m[1].trim():"",amount:x.amount}}).filter(x=>x.city);
+  const provinceCity={BA:"Bari",NA:"Napoli",SA:"Salerno",FI:"Firenze",LI:"Livorno",GR:"Grosseto"};
+  for(const cinema of selected){
+    const normalized=tariffKey(cinema.replace(/^TSC\s+/i,"").replace(/\s*\([A-Z]{2}\)\s*$/i,""));
+    const province=(cinema.match(/\(([A-Z]{2})\)\s*$/i)||[])[1]?.toUpperCase()||"";
+    let rate=callRows.find(x=>normalized.includes(tariffKey(x.city))||tariffKey(x.city).includes(normalized));
+    if(!rate&&provinceCity[province])rate=callRows.find(x=>tariffKey(x.city)===tariffKey(provinceCity[province]));
+    if(rate)calls.push({cinema:cinema.replace(/^TSC\s+/i,"").replace(/\s*\([A-Z]{2}\)\s*$/i,"").trim(),city:rate.city,amount:rate.amount});
+  }
   const lines=[];
   if(ordinary)lines.push(`Euro/ora ${tariffAmount(ordinary.amount)} per gli interventi di natura straordinaria effettuati dalle ore 08:00 alle ore 18:00 nei giorni feriali;`);
   if(night)lines.push(`Euro/ora ${tariffAmount(night.amount)} per gli interventi effettuati dalle ore 18:01 alle ore 07:59 e nei giorni festivi;`);
   const unique=[...new Set(calls.map(x=>Number(x.amount).toFixed(2)))];
   if(calls.length&&unique.length===1)lines.push(`Euro/chiamata ${tariffAmount(calls[0].amount)} quale diritto fisso di chiamata per gli interventi urgenti;`);
-  else if(calls.length){lines.push("Diritto di chiamata:");for(const x of calls)lines.push(`Euro/chiamata ${tariffAmount(x.amount)} per gli interventi urgenti presso TSC ${x.city};`)}
+  else if(calls.length){lines.push("Diritto di chiamata:");for(const x of calls)lines.push(`Euro/chiamata ${tariffAmount(x.amount)} per gli interventi urgenti presso TSC ${x.cinema};`)}
   return lines.join("\n");
 }
 function formatInps(v){const x=String(v||"").replace(/\s+/g," ").trim(),nums=x.match(/\d{6,15}/g)||[];if(nums.length>=2)return`Metalmeccanico: ${nums[0]} - Edile: ${nums[1]}`;return nums.length===1?nums[0]:x}
