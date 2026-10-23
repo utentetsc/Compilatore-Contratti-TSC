@@ -158,3 +158,10 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - Casamassima (BA) usa la tariffa Bari di 90 euro;
 - Napoli, Nola e Salerno usano 60 euro;
 - nessun altro componente modificato.
+
+
+#### Versione 0.6.6 - Ultima correzione firma
+- la cella destra della firma viene individuata dalla tabella, non dagli indici globali;
+- eliminati [DA COMPILARE], duplicazione del ruolo e Giuseppe Signorino;
+- mantenute Napoli, E.M.E. Srl, D’Orta Maria Rosaria e tutte le correzioni della v0.6.5;
+- nessun altro file logico modificato.

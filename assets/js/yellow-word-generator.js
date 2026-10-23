@@ -1,5 +1,5 @@
 const YellowAreaWordGenerator=(()=>{
- const BUILD="yellow-areas-v4.3-city-tariff-fix-2026-10-23",W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XML="http://www.w3.org/XML/1998/namespace";
+ const BUILD="yellow-areas-v4.3-final-signature-fix-2026-10-23",W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XML="http://www.w3.org/XML/1998/namespace";
  const REQUIRED=new Set(["POSIZIONE_INPS","DATI_POLIZZA","MASSIMALE","TELEFONO_REPERIBILITA"]);
  console.info("Word generator build:",BUILD);
  const clean=v=>String(v??"").replace(/\s+/g," ").trim();
@@ -56,7 +56,19 @@ const YellowAreaWordGenerator=(()=>{
  function values(d){const company=clean(d.RAGIONE_SOCIALE||d.DENOMINAZIONE_DOCUMENTI||d.DENOMINAZIONE_DB||d.DITTA),address=cleanAddress(d.SEDE_LEGALE),rep=titleCase(clean(d.LEGALE_RAPPRESENTANTE).replace(/^sig\.?\s*/i,"").replace(/[•]+/g,"")),works=clean(d.TIPOLOGIE_LAVORAZIONE).split(/,\s*/).filter(Boolean).map(workLabel),workText=works.join(", "),list=works.map((x,i)=>`${String.fromCharCode(97+i)}) ${x}${i===works.length-1?".":";"}`).join("\n");
   const description=works.length?`della conduzione e manutenzione ${works.map((x,i)=>`${i===works.length-1&&works.length>1?"nonché ":""}degli ${x.toLocaleLowerCase("it-IT")}`).join(", ")}`:"";
   return{OGGETTO_CONTRATTO:workText.toUpperCase(),DATA_CONTRATTO:clean(d.DATA_CONTRATTO),ANAGRAFICA_COMPLETA_APPALTATORE:company?`${company}, con sede legale in ${address}, P. IVA ${clean(d.PARTITA_IVA)} e C.F. ${clean(d.CODICE_FISCALE)}, R.E.A. n. ${clean(d.REA)}, in persona di ${rep},`:"",DESCRIZIONE_LAVORAZIONI:description,POSIZIONE_INPS:clean(d.POSIZIONE_INPS),ELENCO_LAVORAZIONI:list,DATI_POLIZZA:[clean(d.COMPAGNIA_ASSICURATIVA),clean(d.NUMERO_POLIZZA)&&`polizza assicurativa n. ${clean(d.NUMERO_POLIZZA)}`].filter(Boolean).join(", "),MASSIMALE:clean(d.MASSIMALE)?money(d.MASSIMALE):"",IMPORTO_CONTRATTO:clean(d.IMPORTO_CONTRATTO)?`Euro ${money(d.IMPORTO_CONTRATTO)}`:"",COSTI_SICUREZZA:clean(d.COSTI_SICUREZZA)||"Euro 300,00 (trecento/00)",TARIFFE_STRAORDINARIE:String(d.TARIFFE_STRAORDINARIE||"").replace(/di viaggio\s+di viaggio/gi,"di viaggio"),DURATA_CONTRATTO:duration(d.DATA_INIZIO,d.DATA_FINE),DATA_INIZIO:clean(d.DATA_INIZIO),DATA_FINE:clean(d.DATA_FINE),RAGIONE_SOCIALE:company,SEDE_LEGALE:address,TELEFONO:clean(d.TELEFONO),EMAIL:clean(d.EMAIL),PEC:clean(d.PEC).toLocaleLowerCase("it-IT"),TELEFONO_REPERIBILITA:clean(d.TELEFONO_REPERIBILITA),CITTA_FIRMA:city(address),LEGALE_RAPPRESENTANTE:rep}}
- function signature(doc,map){const ps=els(doc,"p");if(ps.length<213)return;for(let i=204;i<=212;i++)setParagraph(ps[i],"");setParagraph(ps[204],`${map.CITTA_FIRMA||"[DA COMPILARE]"},`,true);setParagraph(ps[207],map.RAGIONE_SOCIALE||"[DA COMPILARE]",true);setParagraph(ps[210],"_________________________");setParagraph(ps[211],map.LEGALE_RAPPRESENTANTE||"[DA COMPILARE]",true);setParagraph(ps[212],"Il Legale Rappresentante")}
+ function signature(doc,map){
+  const table=els(doc,"tbl").find(tbl=>txt(tbl).includes("The Space Cinema 1 S.p.A.")&&txt(tbl).includes("Il Legale Rappresentante"));
+  if(!table)return;
+  const row=els(table,"tr").find(r=>els(r,"tc").length>=2&&txt(r).includes("The Space Cinema 1 S.p.A."));
+  if(!row)return;
+  const cells=els(row,"tc"),right=cells[1]&&els(cells[1],"p");if(!right||right.length<9)return;
+  right.forEach(p=>setParagraph(p,""));
+  setParagraph(right[0],`${map.CITTA_FIRMA||"[DA COMPILARE]"},`,true);
+  setParagraph(right[3],map.RAGIONE_SOCIALE||"[DA COMPILARE]",true);
+  setParagraph(right[6],"_________________________");
+  setParagraph(right[7],map.LEGALE_RAPPRESENTANTE||"[DA COMPILARE]",true);
+  setParagraph(right[8],"Il Legale Rappresentante");
+ }
  async function generate(file,data){if(typeof PizZip==="undefined")throw Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n)),files=paths.map(p=>scan(p,zip.file(p).asText())),raw=files.flatMap(x=>x.raw).filter(x=>x.text.trim()),areas=profile(raw),map=values(data),missing=[];if(!areas.length)throw Error("Nessuna area gialla riconosciuta nel master originale.");for(const a of areas){let v=a.field==="TARIFFE_STRAORDINARIE"?String(map[a.field]||""):clean(map[a.field]);if(!v&&REQUIRED.has(a.field)){v="[DA COMPILARE]";missing.push(a.field)}if(v)apply(a,v)}const main=files.find(x=>x.path==="word/document.xml");main&&signature(main.doc,map);files.forEach(f=>zip.file(f.path,new XMLSerializer().serializeToString(f.doc)));const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}return{build:BUILD,replaced:areas.length,missing:[...new Set(missing)],technicalAreas:raw.length}}
  return{generate,BUILD};
 })();window.YellowAreaWordGenerator=YellowAreaWordGenerator;
