@@ -32,8 +32,17 @@ const DocumentParser = (() => {
     }).join("");
   }
   function normalizeAddress(value){
-    let v=clean(value).replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"").replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2").replace(/\bint\.?\s*(\d+)/i,"int. $1");
+    let v=clean(value)
+      .replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"")
+      .replace(/^\s*(?:sede\s+)?legale\s+/i,"")
+      .replace(/\s+(?:domicilio\s+digitale(?:\s*\/\s*pec)?|indirizzo\s+pec|pec|numero\s+rea|numero\s+d['’]?iscrizione|codice\s+fiscale|partita\s+iva|forma\s+giuridica)\b[\s\S]*$/i,"")
+      .replace(/\s+numero\s*$/i,"")
+      .replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2")
+      .replace(/\bint\.?\s*(\d+)/i,"int. $1");
     v=v.replace(/\s*,\s*/g,", ").replace(/\s{2,}/g," ").replace(/[•]+/g,"").replace(/[.,;]+$/g,"");
+    v=v.replace(/^([A-ZÀ-Ü][A-ZÀ-Ü' -]+)\s*\(([A-Z]{2})\)\s+/i,"$1 ($2), ")
+       .replace(/\bCAP\s*(\d{5})\b/i,"CAP $1")
+       .replace(/\s+(CAP\s+\d{5})$/i,", $1");
     return titleWords(v).replace(/\bInt\.\s*/g,"int. ");
   }
   function normalizeField(field,value){

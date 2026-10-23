@@ -146,9 +146,8 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - mantenute integralmente scadenza, durata ed elenchi tariffari della v0.5.9.
 
 
-#### Versione 0.6.3 - Correzione sola firma
-- la firma viene individuata tramite la tabella e non tramite indici globali dei paragrafi;
-- Napoli, ragione sociale, linea, legale rappresentante e ruolo restano nella cella destra;
-- il blocco The Space Cinema nella cella sinistra non viene modificato;
-- eliminati definitivamente i residui del precedente appaltatore nella cella destra;
-- nessun altro componente modificato.
+#### Versione 0.6.4 - Solo indirizzo e nuovi marcatori
+- pulizia della sola sede legale;
+- città firma ricavata dalla sede pulita;
+- Telefono e clausola diritto fisso non sono più marcatori;
+- nessun’altra logica modificata.
