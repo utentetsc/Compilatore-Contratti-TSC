@@ -32,14 +32,9 @@ const DocumentParser = (() => {
     }).join("");
   }
   function normalizeAddress(value){
-    let v=clean(value)
-      .replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"")
-      .replace(/^\s*(?:sede\s+)?legale\s+/i,"")
-      .replace(/\s+(?:domicilio\s+digitale(?:\s*\/\s*pec)?|indirizzo\s+pec|pec|numero\s+rea|numero\s+d['’]?iscrizione|codice\s+fiscale|partita\s+iva|forma\s+giuridica)\b[\s\S]*$/i,"")
-      .replace(/\s+numero\s*$/i,"")
-      .replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2").replace(/\bint\.?\s*(\d+)/i,"int. $1");
+    let v=clean(value).replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"").replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2").replace(/\bint\.?\s*(\d+)/i,"int. $1");
     v=v.replace(/\s*,\s*/g,", ").replace(/\s{2,}/g," ").replace(/[•]+/g,"").replace(/[.,;]+$/g,"");
-    return titleWords(v).replace(/\(([a-z]{2})\)/g,(_,x)=>`(${x.toUpperCase()})`).replace(/\bInt\.\s*/g,"int. ");
+    return titleWords(v).replace(/\bInt\.\s*/g,"int. ");
   }
   function normalizeField(field,value){
     value=clean(value);
@@ -56,24 +51,19 @@ const DocumentParser = (() => {
   function evidence(field,value,file,confidence,sourceType){return {field,label:FIELD_LABELS[field]||field,value:normalizeField(field,value),source:file.name,sourceType,confidence}}
   function officialRegisteredOffice(text){
     const flat=String(text||"").replace(/\s+/g," ").trim();
-    const label=/indirizzo\s+sede\s+legale/i.exec(flat);
-    if(!label)return "";
-    // Limit the search to the official Sede box, before PEC, VAT, REA and other fields.
-    let block=flat.slice(label.index+label[0].length,label.index+label[0].length+500);
-    block=block.split(/domicilio\s+digitale(?:\s*\/\s*pec)?|indirizzo\s+pec|\bpec\b|partita\s+iva|numero\s+repertorio|repertorio\s+economico|\brea\b|codice\s+fiscale|forma\s+giuridica/i)[0];
-    // Standard chamber format: COMUNE (PR) VIA ... CAP 00000.
-    let m=block.match(/([A-ZÀ-Ü][A-ZÀ-Ü' .-]{1,60}?)\s*\(([A-Z]{2})\)[\s,;:-]*((?:VIA|VIALE|CORSO|PIAZZA|STRADA|LARGO|VICOLO|LOCALIT[AÀ]|S\.S\.)\s+.+?)\s+CAP\s*(\d{5})/i);
+    const found=/indirizzo\s+sede\s+legale/i.exec(flat);if(!found)return "";
+    let block=flat.slice(found.index+found[0].length,found.index+found[0].length+600);
+    block=block.split(/stradario|domicilio\s+digitale(?:\s*\/\s*pec)?|indirizzo\s+pec|\bpec\b|partita\s+iva|numero\s+repertorio|repertorio\s+economico|\brea\b|codice\s+fiscale|forma\s+giuridica/i)[0];
+    let m=block.match(/([A-ZÀ-Ü][A-ZÀ-Ü' .-]{1,60}?)\s*\(([A-Z]{2})\)[\s,;:\-]*((?:VIA|VIALE|CORSO|PIAZZA|STRADA|LARGO|VICOLO|LOCALIT[AÀ]|S\.S\.)\s+.+?)\s+CAP\s*(\d{5})/i);
     if(m)return `${m[3].trim()}, ${m[4]} ${m[1].trim()} (${m[2].toUpperCase()})`;
-    // Alternate order: VIA ... CAP 00000 COMUNE (PR).
     m=block.match(/((?:VIA|VIALE|CORSO|PIAZZA|STRADA|LARGO|VICOLO|LOCALIT[AÀ]|S\.S\.)\s+.+?)\s+CAP\s*(\d{5})\s+([A-ZÀ-Ü][A-ZÀ-Ü' .-]{1,60}?)\s*\(([A-Z]{2})\)/i);
-    if(m)return `${m[1].trim()}, ${m[2]} ${m[3].trim()} (${m[4].toUpperCase()})`;
-    return "";
+    return m?`${m[1].trim()}, ${m[2]} ${m[3].trim()} (${m[4].toUpperCase()})`:"";
   }
   function extractFromText(text,file){
     const sourceType=documentType(text,file);
-    const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
+    const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};
     const officialOffice=officialRegisteredOffice(text);
-    if(officialOffice)add("registeredOffice",officialOffice,1.0);
+    if(officialOffice)out.push(evidence("registeredOffice",officialOffice,file,1.0,"sede_ufficiale"));    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
     for(const re of [/(?:n[°º.]?\s*iscrizione\s+cciaa?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i,/(?:numero\s+rea|r\.?e\.?a\.?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i]){const m=text.match(re);if(m){add("rea",`${m[1].toUpperCase()}-${m[2]}`,.999);break}}
     // Registro Imprese / REA: supporta CCIA, CCIAA, Numero REA e formati con spazi o trattini.
     const reaPatterns=[
@@ -150,7 +140,7 @@ const DocumentParser = (() => {
   function sourcePriority(field,type){
     const rules={
       companyName:{certificato:700,visura:500,duvri:300,altro:100,polizza:50,durc:50},
-      registeredOffice:{certificato:700,visura:500,duvri:300,altro:100,polizza:50,durc:50},
+      registeredOffice:{sede_ufficiale:1000,certificato:700,visura:500,duvri:300,altro:100,polizza:50,durc:50},
       legalRepresentative:{certificato:650,visura:500,duvri:350,altro:100,polizza:40,durc:40},
       vatNumber:{certificato:700,visura:500,duvri:300,durc:150,altro:100},fiscalCode:{certificato:700,visura:500,duvri:300,durc:150,altro:100},rea:{certificato:700,visura:500,duvri:250,altro:100},pec:{certificato:700,visura:500,duvri:350,altro:100},
       phone:{duvri:500,visura:250,altro:100},email:{duvri:500,visura:250,altro:100},inpsPosition:{duvri:500,durc:400,visura:300,altro:100},inailPosition:{duvri:500,durc:400,visura:300,altro:100},
