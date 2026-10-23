@@ -165,3 +165,9 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - eliminati [DA COMPILARE], duplicazione del ruolo e Giuseppe Signorino;
 - mantenute Napoli, E.M.E. Srl, D’Orta Maria Rosaria e tutte le correzioni della v0.6.5;
 - nessun altro file logico modificato.
+
+
+#### Versione 0.6.7 - Luogo firma
+- corretto esclusivamente il riconoscimento di Napoli dalla sede Napoli (NA);
+- supportate sigle provinciali in maiuscolo o minuscolo;
+- nessun’altra logica modificata rispetto alla v0.6.6.

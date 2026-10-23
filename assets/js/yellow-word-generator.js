@@ -1,5 +1,5 @@
 const YellowAreaWordGenerator=(()=>{
- const BUILD="yellow-areas-v4.3-final-signature-fix-2026-10-23",W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XML="http://www.w3.org/XML/1998/namespace";
+ const BUILD="yellow-areas-v4.3-final-place-fix-2026-10-23",W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XML="http://www.w3.org/XML/1998/namespace";
  const REQUIRED=new Set(["POSIZIONE_INPS","DATI_POLIZZA","MASSIMALE","TELEFONO_REPERIBILITA"]);
  console.info("Word generator build:",BUILD);
  const clean=v=>String(v??"").replace(/\s+/g," ").trim();
@@ -43,13 +43,16 @@ const YellowAreaWordGenerator=(()=>{
    .replace(/\s+(CAP\s+\d{5})$/i,", $1").replace(/\s*,\s*/g,", ").replace(/\s{2,}/g," ").replace(/[•]+/g,"").trim().replace(/[.,;]+$/g,"")}
  function money(v){const n=Number(String(v||"").replace(/\./g,"").replace(",","."));return Number.isFinite(n)?n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2}):clean(v)}
  function city(v){
-  const raw=clean(v).replace(/^\s*(?:sede\s+)?legale\s+/i,"");
-  let m=raw.match(/\b([A-Za-zÀ-ÿ' -]+?)\s*\(([A-Z]{2})\)(?:\s|,|$)/);
-  if(m)return titleCase(m[1].trim().split(/\s+/).slice(-3).join(" "));
-  const t=cleanAddress(raw);m=t.match(/^([A-Za-zÀ-ÿ' -]+?)\s*\([A-Z]{2}\)(?:,|\s|$)/);
-  if(m)return titleCase(m[1]);
-  m=t.match(/\b\d{5}\s+([A-Za-zÀ-ÿ' -]+?)(?:\s*\([A-Z]{2}\)|,|$)/);
-  return m?titleCase(m[1]):"";
+  const raw=clean(v)
+    .replace(/^\s*(?:sede\s+)?legale\s+/i,"")
+    .replace(/\s+(?:domicilio\s+digitale(?:\s*\/\s*pec)?|indirizzo\s+pec|pec|numero\s+rea|numero|codice\s+fiscale|partita\s+iva)\b[\s\S]*$/i,"");
+  let m=raw.match(/^\s*([A-Za-zÀ-ÿ' -]+?)\s*\(([A-Z]{2})\)(?:\s|,|$)/i);
+  if(m)return titleCase(m[1].trim());
+  m=raw.match(/\b\d{5}\s+([A-Za-zÀ-ÿ' -]+?)(?:\s*\([A-Z]{2}\)|,|$)/i);
+  if(m)return titleCase(m[1].trim());
+  const cleaned=cleanAddress(raw);
+  m=cleaned.match(/^\s*([A-Za-zÀ-ÿ' -]+?)\s*\(([A-Z]{2})\)(?:\s|,|$)/i);
+  return m?titleCase(m[1].trim()):"";
 }
  function duration(a,b){if(!a||!b)return"";const parse=x=>{const q=String(x).split(/[\/-]/).map(Number);return q[0]>31?new Date(q[0],q[1]-1,q[2]):new Date(q[2],q[1]-1,q[0])},x=parse(a),y=parse(b);if(isNaN(x)||isNaN(y)||y<x)return"";const endInclusive=new Date(y);endInclusive.setDate(endInclusive.getDate()+1);let months=(endInclusive.getFullYear()-x.getFullYear())*12+endInclusive.getMonth()-x.getMonth();if(endInclusive.getDate()<x.getDate())months--;const words=["zero","uno","due","tre","quattro","cinque","sei","sette","otto","nove","dieci"];if(months>0&&months%12===0){const years=months/12;return `${years} (${words[years]||years})`}return `${Math.max(1,months)} mesi`}
  function workLabel(v){const n=clean(v).toUpperCase();if(n.includes("ELETTRICI"))return"Impianti elettrici e UPS ordinaria";if(n.includes("TVCC"))return"Impianti TVCC e antintrusione";if(n.includes("SICUREZZA")||n.includes("RILEVAZIONE FUMI"))return"Impianti di sicurezza, rilevazione fumi ed evacuazione";if(n.includes("IDRICO"))return"Impianti idrico-sanitari";return titleCase(v)}
