@@ -32,18 +32,9 @@ const DocumentParser = (() => {
     }).join("");
   }
   function normalizeAddress(value){
-    let v=clean(value)
-      .replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"")
-      .replace(/^\s*(?:sede\s+)?legale\s+/i,"")
-      .replace(/\s+(?:domicilio\s+digitale(?:\s*\/\s*pec)?|indirizzo\s+pec|pec|numero\s+rea|numero\s+d['’]?iscrizione|codice\s+fiscale|partita\s+iva|forma\s+giuridica)\b[\s\S]*$/i,"")
-      .replace(/\s+numero\s*$/i,"")
-      .replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2")
-      .replace(/\bint\.?\s*(\d+)/i,"int. $1");
+    let v=clean(value).replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"").replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2").replace(/\bint\.?\s*(\d+)/i,"int. $1");
     v=v.replace(/\s*,\s*/g,", ").replace(/\s{2,}/g," ").replace(/[•]+/g,"").replace(/[.,;]+$/g,"");
-    v=v.replace(/^([A-ZÀ-Ü][A-ZÀ-Ü' -]+)\s*\(([A-Z]{2})\)\s+/i,"$1 ($2), ")
-       .replace(/\bCAP\s*(\d{5})\b/i,"CAP $1")
-       .replace(/\s+(CAP\s+\d{5})$/i,", $1");
-    return titleWords(v).replace(/\bInt\.\s*/g,"int. ");
+    return titleWords(v).replace(/\(([a-z]{2})\)/g,(_,p)=>`(${p.toUpperCase()})`).replace(/\bInt\.\s*/g,"int. ");
   }
   function normalizeField(field,value){
     value=clean(value);
@@ -68,6 +59,16 @@ const DocumentParser = (() => {
       /(?:registro\s+imprese)[\s\S]{0,100}?(?:rea|r\.?e\.?a\.?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i
     ];
     for(const re of reaPatterns){const m=text.match(re);if(m){add("rea",`${m[1].toUpperCase()}-${m[2]}`,.995);break}}
+
+    // Visure Registro Imprese: priorità assoluta al riquadro ufficiale "Indirizzo Sede legale".
+    // Esempio: LIVORNO (LI) VIA FABIO FILZI 19 CAP 57122.
+    const officialOffice=text.match(/indirizzo\s+sede\s+legale\s*[:\-]?\s*([A-ZÀ-Ü][A-ZÀ-Ü' .-]*?)\s*\(([A-Z]{2})\)\s*((?:VIA|VIALE|CORSO|PIAZZA|STRADA|LARGO|VICOLO|LOCALIT[AÀ]|S\.S\.)\s+[A-ZÀ-Ü0-9' .\/-]+?)\s+CAP\s*(\d{5})(?=\s+(?:stradario|domicilio\s+digitale|pec|partita\s+iva|numero\s+repertorio|rea|codice\s+fiscale|$))/i);
+    if(officialOffice){
+      const comune=titleWords(officialOffice[1]);
+      const provincia=officialOffice[2].toUpperCase();
+      const via=titleWords(officialOffice[3]);
+      add("registeredOffice",`${via}, ${officialOffice[4]} ${comune} (${provincia})`,1.0);
+    }
 
     if(sourceType==="certificato"){
       add("companyName",first(text,[/(?:^|\s)denominazione\s*:\s*([A-Z0-9À-Ü][A-Z0-9À-Ü&'.\- ]{1,100}?)(?=\s+(?:forma\s+giuridica|sede|codice\s+fiscale|rea|domicilio\s+digitale|pec)|$)/i]),1.0);
