@@ -6,7 +6,23 @@ const DocumentParser = (() => {
     if(!window.pdfjsLib)throw new Error("Libreria PDF non disponibile");
     pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
     const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let text="";
-    for(let i=1;i<=pdf.numPages;i++){const page=await pdf.getPage(i),content=await page.getTextContent();text+="\n"+content.items.map(x=>x.str).join(" ")}
+    const forceOcr=/(?:polizza|assicurazione|cciaa|camerale|visura)/i.test(file.name||"");
+    for(let i=1;i<=pdf.numPages;i++){
+      const page=await pdf.getPage(i),content=await page.getTextContent();
+      let pageText=content.items.map(x=>x.str).join(" ");
+      if((forceOcr||pageText.replace(/\s/g,"").length<250)&&window.Tesseract){
+        const viewport=page.getViewport({scale:2}),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
+        canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+        await page.render({canvasContext:ctx,viewport}).promise;
+        let ocr="";
+        try{ocr=(await Tesseract.recognize(canvas,"ita")).data.text}catch(errIta){
+          console.warn("OCR italiano non disponibile, provo inglese",errIta);
+          try{ocr=(await Tesseract.recognize(canvas,"eng")).data.text}catch(errEng){console.warn("OCR PDF non riuscito, pagina",i,errEng)}
+        }
+        if(ocr)pageText+="\n"+ocr;
+      }
+      text+="\n"+pageText;
+    }
     return text;
   }
   async function docxText(file){if(!window.mammoth)throw new Error("Libreria DOCX non disponibile");return (await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value}
@@ -83,7 +99,7 @@ const DocumentParser = (() => {
     add("fiscalCode",first(text,[/(?:codice\s+fiscale|c\.?f\.?)\s*[:\-]?\s*([A-Z0-9]{11,16})/i]),.94);
     add("rea",first(text,[/(?:numero\s+rea|r\.?e\.?a\.?)\s*[:\-]?\s*([A-Z]{0,2}\s*[-/]?\s*[0-9]{3,10})/i]),.88);
     add("registeredOffice",first(text,[new RegExp("(?:sede\\s+legale|indirizzo\\s+sede)\\s*[:\\-]?\\s*(.{5,150}?)"+stop,"i")]),.82);
-    add("pec",first(text,[/(?:pec|posta elettronica certificata)\s*[:\-]?\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i,/\b([A-Z0-9._%+\-]*@[A-Z0-9.\-]*pec[A-Z0-9.\-]*\.[A-Z]{2,})\b/i,/\b([A-Z0-9._%+\-]*pec[A-Z0-9._%+\-]*@[A-Z0-9.\-]+\.[A-Z]{2,})\b/i]),.98);
+    if(sourceType!=="polizza")add("pec",first(text,[/(?:domicilio\s+digitale(?:\s*\/\s*pec)?|pec|posta elettronica certificata)\s*[:\-]?\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i,/\b([A-Z0-9._%+\-]*@[A-Z0-9.\-]*pec[A-Z0-9.\-]*\.[A-Z]{2,})\b/i,/\b([A-Z0-9._%+\-]*pec[A-Z0-9._%+\-]*@[A-Z0-9.\-]+\.[A-Z]{2,})\b/i]),.98);
     add("legalRepresentative",first(text,[new RegExp("(?:legale\\s+rappresentante|rappresentante\\s+legale)\\s*[:\\-]?\\s*(.{3,90}?)"+stop,"i")]),.82);
     // Modello DUVRI e schede anagrafiche: fonte prioritaria per dati operativi.
     add("companyName",first(text,[/(?:ragione\s+sociale|denominazione\s+ditta)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+(?:forma\s+giuridica|indirizzo|sede\s+legale|P\.?\s*IVA|C\.?F\.?)|\n|$)/i,/(?:ditta\s+aggiudicataria)\s*[:;]?\s*([A-ZÀ-Ü][A-ZÀ-Ü0-9 &'\.\-]{4,120}?)(?=\s+P\.?\s*IVA|\n|$)/i]),.995);
@@ -96,19 +112,39 @@ const DocumentParser = (() => {
     add("inpsPosition",first(text,[/(?:n[°º]\s*iscrizione\s+inps|matricola\s+inps|posizione\s+inps)\s*[:;\-]?\s*([A-Z0-9./-]{5,30})/i]),.98);
     add("inailPosition",first(text,[/(?:n[°º]\s*iscrizione\s+inail|posizione\s+inail)\s*[:;\-]?\s*([A-Z0-9./-]{5,40}(?:\s*[-–]\s*pat\.?\s*[A-Z0-9./-]+)?)/i]),.96);
 
-    // Assicurazione: intestazione effettiva, scadenza e massimale RCT.
-    let insurer=first(text,[/\b((?:SOCIET[AÀ]\s+)?REALE\s+MUTUA(?:\s+DI\s+ASSICURAZIONI)?)/i,/\b(UNIPOL(?:\s+ASSICURAZIONI)?(?:\s+S\.?P\.?A\.?)?)/i,/\b(ALLIANZ|GENERALI|UNIPOLSAI|AXA|ZURICH|REALE MUTUA|VITTORIA ASSICURAZIONI|HELVETIA|GROUPAMA|HDI|ITALIANA ASSICURAZIONI)\b/i]);
-    add("insuranceCompany",insurer,.995);
-    let policy=first(text,[/(?:numero\s+di\s+polizza|numero\s+polizza|polizza\s*n[.:°º]*)\s*[:\-]?\s*([0-9]{3,5}\s*\/\s*[0-9]{2}\s*\/\s*[0-9]{6,10})/i,/\b(20\d{2}\s*\/\s*\d{2}\s*\/\s*\d{6,10})\b/i,/(?:n(?:umero)?[.°º\s]*\s*(?:di\s+)?polizza|numero\s+polizza)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{2,49})/i]).replace(/\s+/g,"");
+    // Assicurazione: OCR tollerante per intestazione, date in tabella e massimale RCT.
+    let insurer=first(text,[
+      /\b((?:SOCIET[ÀA-Z]*\s+)?REALE\s+MUTUA(?:\s+DI\s+ASSICURAZIONI)?)/i,
+      /\b(UNIPOL(?:\s+ASSICURAZIONI)?(?:\s+S\.?P\.?A\.?)?)/i,
+      /\b(ALLIANZ|GENERALI|UNIPOLSAI|AXA|ZURICH|REALE MUTUA|VITTORIA ASSICURAZIONI|HELVETIA|GROUPAMA|HDI|ITALIANA ASSICURAZIONI)\b/i
+    ]);
+    add("insuranceCompany",insurer,.999);
+    let policy=first(text,[
+      /(?:numero\s+di\s+polizza|numero\s+polizza|polizza\s*n[.:°º]*)\s*[:\-]?\s*([0-9]{3,5}\s*\/\s*[0-9]{2}\s*\/\s*[0-9]{6,10})/i,
+      /\b(20\d{2}\s*\/\s*\d{2}\s*\/\s*\d{6,10})\b/i,
+      /(?:n(?:umero)?[.°º\s]*\s*(?:di\s+)?polizza|numero\s+polizza)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/.]{2,49})/i
+    ]).replace(/\s+/g,"");
     add("policyNumber",policy,.99);
     let expiry="";
-    const direct=first(text,[/scadenza\s+(?:del\s+)?contratto\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i,/scadenza\s+(?:della\s+)?polizza\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i]);
+    const direct=first(text,[
+      /scadenza\s+(?:del\s+)?contratto\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i,
+      /scadenza\s+(?:della\s+)?polizza\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i
+    ]);
     if(direct)expiry=dateISO(direct);
-    if(!expiry){const h=(text.match(/DECORRENZA\s+CONTRATTO[\s\S]{0,350}/i)||[])[0]||"";const m=h.match(/SCADENZA\s+CONTRATTO[\s\S]{0,100}?(\d{1,2})\D{1,10}(\d{1,2})\D{1,10}(20\d{2})/i);if(m)expiry=`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;else if(/31[\s|.:-]+12[\s|.:-]+2017/.test(h))expiry="2017-12-31";}
-    add("policyExpiry",expiry,.99);
-    const rct=text.match(/massimale\s+per\s+sinistro\s+euro[\s\S]{0,220}?(5(?:[.\s]000){2}(?:,00)?)/i);
+    if(!expiry){
+      const header=(text.match(/DECORRENZA\s+CONTRATTO[\s\S]{0,500}/i)||[])[0]||"";
+      const candidates=[];
+      for(const m of header.matchAll(/\b(\d{1,2})\D{1,12}(\d{1,2})\D{1,12}(20\d{2})\b/g)){
+        const d=Number(m[1]),mo=Number(m[2]),y=Number(m[3]);
+        if(d>=1&&d<=31&&mo>=1&&mo<=12)candidates.push({d,mo,y});
+      }
+      candidates.sort((a,b)=>a.y-b.y||a.mo-b.mo||a.d-b.d);
+      const last=candidates.at(-1);if(last)expiry=`${last.y}-${String(last.mo).padStart(2,"0")}-${String(last.d).padStart(2,"0")}`;
+    }
+    add("policyExpiry",expiry,.999);
+    const rct=text.match(/massimale\s+per\s+sinistro\s+euro[\s\S]{0,260}?(5(?:[.\s]000){2}(?:,00)?)/i);
     const generic=first(text,[/(?:massimale|somma\s+assicurata)\s*[:\-]?\s*(?:€|euro)?\s*([0-9. ,]{3,30})/i]);
-    add("policyLimit",rct?.[1]||generic,.995);
+    add("policyLimit",rct?.[1]||generic,.999);
 
     // DURC: evita di scambiare il nome dell'ente INAIL per il protocollo.
     add("durcProtocol",first(text,[/(?:numero\s+protocollo|protocollo)\s*[:\-]?\s*((?=[A-Z0-9\-/.]*\d)[A-Z0-9][A-Z0-9\-/.]{4,49})/i,/\b(INPS_[A-Z0-9_\-]{6,50}|INAIL_[A-Z0-9_\-]{6,50})\b/i]),.90);
