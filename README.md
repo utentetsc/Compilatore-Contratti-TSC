@@ -146,10 +146,9 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - mantenute integralmente scadenza, durata ed elenchi tariffari della v0.5.9.
 
 
-#### Versione 0.6.2 - Sede, tariffe territoriali e città firma
-- sede legale fermata prima di domicilio digitale/PEC e numero REA;
-- nome del file tariffario prioritario rispetto al titolo interno del foglio;
-- associazione Casamassima (BA) alla tariffa Bari;
-- diritti distinti per cinema quando gli importi selezionati differiscono;
-- città della firma ricavata anche dagli indirizzi nel formato Napoli (NA), Via...;
-- mantenute le correzioni assicurative del parser v0.6.1.
+#### Versione 0.6.3 - Correzione sola firma
+- la firma viene individuata tramite la tabella e non tramite indici globali dei paragrafi;
+- Napoli, ragione sociale, linea, legale rappresentante e ruolo restano nella cella destra;
+- il blocco The Space Cinema nella cella sinistra non viene modificato;
+- eliminati definitivamente i residui del precedente appaltatore nella cella destra;
+- nessun altro componente modificato.
