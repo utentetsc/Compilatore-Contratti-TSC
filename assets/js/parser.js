@@ -32,9 +32,14 @@ const DocumentParser = (() => {
     }).join("");
   }
   function normalizeAddress(value){
-    let v=clean(value).replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"").replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2").replace(/\bint\.?\s*(\d+)/i,"int. $1");
+    let v=clean(value)
+      .replace(/appaltatore\s*-\s*esecutori[\s\S]*$/i,"")
+      .replace(/^\s*(?:sede\s+)?legale\s+/i,"")
+      .replace(/\s+(?:domicilio\s+digitale(?:\s*\/\s*pec)?|indirizzo\s+pec|pec|numero\s+rea|numero\s+d['’]?iscrizione|codice\s+fiscale|partita\s+iva|forma\s+giuridica)\b[\s\S]*$/i,"")
+      .replace(/\s+numero\s*$/i,"")
+      .replace(/([a-zà-ÿ])([A-ZÀ-Ü])/g,"$1 $2").replace(/\bint\.?\s*(\d+)/i,"int. $1");
     v=v.replace(/\s*,\s*/g,", ").replace(/\s{2,}/g," ").replace(/[•]+/g,"").replace(/[.,;]+$/g,"");
-    return titleWords(v).replace(/\(([a-z]{2})\)/g,(_,p)=>`(${p.toUpperCase()})`).replace(/\bInt\.\s*/g,"int. ");
+    return titleWords(v).replace(/\(([a-z]{2})\)/g,(_,x)=>`(${x.toUpperCase()})`).replace(/\bInt\.\s*/g,"int. ");
   }
   function normalizeField(field,value){
     value=clean(value);
@@ -49,9 +54,26 @@ const DocumentParser = (() => {
     return value;
   }
   function evidence(field,value,file,confidence,sourceType){return {field,label:FIELD_LABELS[field]||field,value:normalizeField(field,value),source:file.name,sourceType,confidence}}
+  function officialRegisteredOffice(text){
+    const flat=String(text||"").replace(/\s+/g," ").trim();
+    const label=/indirizzo\s+sede\s+legale/i.exec(flat);
+    if(!label)return "";
+    // Limit the search to the official Sede box, before PEC, VAT, REA and other fields.
+    let block=flat.slice(label.index+label[0].length,label.index+label[0].length+500);
+    block=block.split(/domicilio\s+digitale(?:\s*\/\s*pec)?|indirizzo\s+pec|\bpec\b|partita\s+iva|numero\s+repertorio|repertorio\s+economico|\brea\b|codice\s+fiscale|forma\s+giuridica/i)[0];
+    // Standard chamber format: COMUNE (PR) VIA ... CAP 00000.
+    let m=block.match(/([A-ZÀ-Ü][A-ZÀ-Ü' .-]{1,60}?)\s*\(([A-Z]{2})\)[\s,;:-]*((?:VIA|VIALE|CORSO|PIAZZA|STRADA|LARGO|VICOLO|LOCALIT[AÀ]|S\.S\.)\s+.+?)\s+CAP\s*(\d{5})/i);
+    if(m)return `${m[3].trim()}, ${m[4]} ${m[1].trim()} (${m[2].toUpperCase()})`;
+    // Alternate order: VIA ... CAP 00000 COMUNE (PR).
+    m=block.match(/((?:VIA|VIALE|CORSO|PIAZZA|STRADA|LARGO|VICOLO|LOCALIT[AÀ]|S\.S\.)\s+.+?)\s+CAP\s*(\d{5})\s+([A-ZÀ-Ü][A-ZÀ-Ü' .-]{1,60}?)\s*\(([A-Z]{2})\)/i);
+    if(m)return `${m[1].trim()}, ${m[2]} ${m[3].trim()} (${m[4].toUpperCase()})`;
+    return "";
+  }
   function extractFromText(text,file){
     const sourceType=documentType(text,file);
     const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};    const stop="(?=\\s+(?:partita\\s+iva|codice\\s+fiscale|sede\\s+legale|pec|rea|legale\\s+rappresentante|compagnia|polizza|massimale|decorrenza|scadenza|protocollo|inail|inps)\\b|$)";
+    const officialOffice=officialRegisteredOffice(text);
+    if(officialOffice)add("registeredOffice",officialOffice,1.0);
     for(const re of [/(?:n[°º.]?\s*iscrizione\s+cciaa?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i,/(?:numero\s+rea|r\.?e\.?a\.?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i]){const m=text.match(re);if(m){add("rea",`${m[1].toUpperCase()}-${m[2]}`,.999);break}}
     // Registro Imprese / REA: supporta CCIA, CCIAA, Numero REA e formati con spazi o trattini.
     const reaPatterns=[
@@ -59,16 +81,6 @@ const DocumentParser = (() => {
       /(?:registro\s+imprese)[\s\S]{0,100}?(?:rea|r\.?e\.?a\.?)\s*[:;\-]?\s*([A-Z]{2})\s*[-–/]?\s*(\d{4,10})/i
     ];
     for(const re of reaPatterns){const m=text.match(re);if(m){add("rea",`${m[1].toUpperCase()}-${m[2]}`,.995);break}}
-
-    // Visure Registro Imprese: priorità assoluta al riquadro ufficiale "Indirizzo Sede legale".
-    // Esempio: LIVORNO (LI) VIA FABIO FILZI 19 CAP 57122.
-    const officialOffice=text.match(/indirizzo\s+sede\s+legale\s*[:\-]?\s*([A-ZÀ-Ü][A-ZÀ-Ü' .-]*?)\s*\(([A-Z]{2})\)\s*((?:VIA|VIALE|CORSO|PIAZZA|STRADA|LARGO|VICOLO|LOCALIT[AÀ]|S\.S\.)\s+[A-ZÀ-Ü0-9' .\/-]+?)\s+CAP\s*(\d{5})(?=\s+(?:stradario|domicilio\s+digitale|pec|partita\s+iva|numero\s+repertorio|rea|codice\s+fiscale|$))/i);
-    if(officialOffice){
-      const comune=titleWords(officialOffice[1]);
-      const provincia=officialOffice[2].toUpperCase();
-      const via=titleWords(officialOffice[3]);
-      add("registeredOffice",`${via}, ${officialOffice[4]} ${comune} (${provincia})`,1.0);
-    }
 
     if(sourceType==="certificato"){
       add("companyName",first(text,[/(?:^|\s)denominazione\s*:\s*([A-Z0-9À-Ü][A-Z0-9À-Ü&'.\- ]{1,100}?)(?=\s+(?:forma\s+giuridica|sede|codice\s+fiscale|rea|domicilio\s+digitale|pec)|$)/i]),1.0);
