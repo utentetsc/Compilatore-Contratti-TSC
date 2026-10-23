@@ -151,3 +151,10 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - città firma ricavata dalla sede pulita;
 - Telefono e clausola diritto fisso non sono più marcatori;
 - nessun’altra logica modificata.
+
+
+#### Versione 0.6.5 - Napoli e tariffa Bari
+- città firma Napoli recuperata dalla sede nel formato Napoli (NA);
+- Casamassima (BA) usa la tariffa Bari di 90 euro;
+- Napoli, Nola e Salerno usano 60 euro;
+- nessun altro componente modificato.
