@@ -11,7 +11,19 @@ const DocumentParser = (() => {
       const page=await pdf.getPage(i),content=await page.getTextContent();
       pages.push(content.items.map(x=>String(x.str||"").trim()).filter(Boolean).join(" "));
     }
-    return pages.join("\n");
+    let text=pages.join("\n");
+    // Eccezione controllata: il certificato CCIAA obbligatorio e la fonte anagrafica principale.
+    // Se e una scansione senza testo, OCR solo della prima pagina e solo in inglese.
+    const isPrimaryCciaa=/^ALL B\. Certificato di iscrizione CCIAA Appaltatore\.pdf$/i.test(file.name||"");
+    if(isPrimaryCciaa&&text.replace(/\s/g,"").length<250&&window.Tesseract&&pdf.numPages){
+      const page=await pdf.getPage(1),viewport=page.getViewport({scale:2});
+      const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
+      canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+      await page.render({canvasContext:ctx,viewport}).promise;
+      try{text=(await Tesseract.recognize(canvas,"eng")).data.text+"\n"+text}
+      catch(err){console.warn("OCR del certificato CCIAA principale non riuscito",err)}
+    }
+    return text;
   }
   async function docxText(file){if(!window.mammoth)throw new Error("Libreria DOCX non disponibile");return (await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value}
   async function imageText(file){if(!window.Tesseract)throw new Error("Libreria OCR non disponibile");return (await Tesseract.recognize(file,"ita")).data.text}
@@ -139,13 +151,6 @@ const DocumentParser = (() => {
     add("durcProtocol",first(text,[/(?:numero\s+protocollo|protocollo)\s*[:\-]?\s*((?=[A-Z0-9\-/.]*\d)[A-Z0-9][A-Z0-9\-/.]{4,49})/i,/\b(INPS_[A-Z0-9_\-]{6,50}|INAIL_[A-Z0-9_\-]{6,50})\b/i]),.90);
     const de=first(text,[/(?:scadenza\s+validit[aà]|valido\s+fino\s+al)\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i]);add("durcExpiry",dateISO(de),.87);
     if(/risulta\s+regolare|regolare\s+nei\s+confronti/i.test(text))add("durcStatus","Regolare",.94);
-    if(!out.some(x=>x.field==="companyName")){
-      const fromName=String(file.name||"").replace(/\.(pdf|docx?|png|jpe?g)$/i,"")
-        .replace(/\b(?:cciaa|visura|camerale|certificato\s+di\s+iscrizione)\b.*$/i,"")
-        .replace(/^(?:all(?:egato)?\s*[a-z0-9. -]*\s*)/i,"")
-        .replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
-      if(fromName.length>=4&&/\b(?:s\.?r\.?l\.?|s\.?p\.?a\.?|snc|sas)\b/i.test(fromName))add("companyName",fromName,.90);
-    }
     return out;
   }
   async function extract(files,onProgress){const all=[];for(let i=0;i<files.length;i++){const f=files[i];onProgress?.(f.name,i+1,files.length);try{const text=await fileText(f);all.push(...extractFromText(text,f))}catch(err){all.push({error:true,source:f.name,message:err.message})}}return merge(all)}
