@@ -5,30 +5,13 @@ const DocumentParser = (() => {
   async function pdfText(file){
     if(!window.pdfjsLib)throw new Error("Libreria PDF non disponibile");
     pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let text="";
-    // OCR solo quando la pagina non contiene testo digitale sufficiente.
-    // La versione precedente forzava l'OCR su ogni pagina di visure e polizze,
-    // rallentando molto la lettura e duplicando il testo in ordine non affidabile.
-    const ocrCandidate=/(?:polizza|assicurazione|cciaa|camerale|visura)/i.test(file.name||"");
+    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const pages=[];
     for(let i=1;i<=pdf.numPages;i++){
       const page=await pdf.getPage(i),content=await page.getTextContent();
-      let pageText=content.items.map(x=>x.str).join(" ");
-      const compactLength=pageText.replace(/\s/g,"").length;
-      const needsOcr=compactLength<250 || (ocrCandidate && compactLength<500);
-      if(needsOcr&&window.Tesseract){
-        const viewport=page.getViewport({scale:2}),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
-        canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-        await page.render({canvasContext:ctx,viewport}).promise;
-        let ocr="";
-        try{ocr=(await Tesseract.recognize(canvas,"eng")).data.text}catch(errIta){
-          console.warn("OCR italiano non disponibile, provo inglese",errIta);
-          try{ocr=(await Tesseract.recognize(canvas,"eng")).data.text}catch(errEng){console.warn("OCR PDF non riuscito, pagina",i,errEng)}
-        }
-        if(ocr)pageText+="\n"+ocr;
-      }
-      text+="\n"+pageText;
+      pages.push(content.items.map(x=>String(x.str||"").trim()).filter(Boolean).join(" "));
     }
-    return text;
+    return pages.join("\n");
   }
   async function docxText(file){if(!window.mammoth)throw new Error("Libreria DOCX non disponibile");return (await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value}
   async function imageText(file){if(!window.Tesseract)throw new Error("Libreria OCR non disponibile");return (await Tesseract.recognize(file,"ita")).data.text}
@@ -60,11 +43,8 @@ const DocumentParser = (() => {
   function normalizeField(field,value){
     value=clean(value);
     if(field==="companyName"){
-      // Esclude intestazioni, avvertenze del QR code e frasi descrittive OCR.
-      // Queste frasi non possono mai essere una ragione sociale.
       if(/^(via|viale|corso|piazza|strada|localita|sede legale|codice fiscale|numero d.iscrizione|registro imprese|partita iva|dati per duvri|attivit[aà]|stato attivit[aà]|data inizio attivit[aà]|dati anagrafici|l.impresa in cifre|forma giuridica|sede)\b/i.test(value))return "";
-      if(/\b(qr\s*code|consente\s+di\s+verificare|corrispondenza\s+tra\s+questo|documento\s+informatico|camera\s+di\s+commercio|registro\s+delle\s+imprese|visura\s+(?:ordinaria|camerale)|certificato\s+di\s+iscrizione)\b/i.test(value))return "";
-      if(value.length>140)return "";
+      if(/\b(qr\s*code|consente\s+di\s+verificare|corrispondenza\s+tra\s+questo|documento\s+informatico|camera\s+di\s+commercio|registro\s+delle\s+imprese)\b/i.test(value))return "";
       return titleWords(value);
     }
     if(field==="registeredOffice")return normalizeAddress(value);
@@ -159,6 +139,13 @@ const DocumentParser = (() => {
     add("durcProtocol",first(text,[/(?:numero\s+protocollo|protocollo)\s*[:\-]?\s*((?=[A-Z0-9\-/.]*\d)[A-Z0-9][A-Z0-9\-/.]{4,49})/i,/\b(INPS_[A-Z0-9_\-]{6,50}|INAIL_[A-Z0-9_\-]{6,50})\b/i]),.90);
     const de=first(text,[/(?:scadenza\s+validit[aà]|valido\s+fino\s+al)\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4})/i]);add("durcExpiry",dateISO(de),.87);
     if(/risulta\s+regolare|regolare\s+nei\s+confronti/i.test(text))add("durcStatus","Regolare",.94);
+    if(!out.some(x=>x.field==="companyName")){
+      const fromName=String(file.name||"").replace(/\.(pdf|docx?|png|jpe?g)$/i,"")
+        .replace(/\b(?:cciaa|visura|camerale|certificato\s+di\s+iscrizione)\b.*$/i,"")
+        .replace(/^(?:all(?:egato)?\s*[a-z0-9. -]*\s*)/i,"")
+        .replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
+      if(fromName.length>=4&&/\b(?:s\.?r\.?l\.?|s\.?p\.?a\.?|snc|sas)\b/i.test(fromName))add("companyName",fromName,.90);
+    }
     return out;
   }
   async function extract(files,onProgress){const all=[];for(let i=0;i<files.length;i++){const f=files[i];onProgress?.(f.name,i+1,files.length);try{const text=await fileText(f);all.push(...extractFromText(text,f))}catch(err){all.push({error:true,source:f.name,message:err.message})}}return merge(all)}
