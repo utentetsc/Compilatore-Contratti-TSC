@@ -194,7 +194,7 @@ async function extractComplianceText(files){
           const page=await pdf.getPage(i),content=await page.getTextContent();
           let pageText=content.items.map(x=>x.str).join(" ");
           const isCamerale=/(?:CCIAA|VISURA|CAMERALE|CAMERA DI COMMERCIO)/i.test(file.name+" "+pageText);
-          if(isCamerale&&window.Tesseract){
+          if(isCamerale&&pageText.replace(/\s/g,"").length<500&&window.Tesseract){
             const viewport=page.getViewport({scale:1.8}),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
             canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
             await page.render({canvasContext:ctx,viewport}).promise;
@@ -381,7 +381,7 @@ function deterministicSupplierMatch(company){
   const ignore=new Set(["srl","spa","snc","sas","sapa","societa","costruzioni","costruzione","servizi","service","di","del","della","dei","degli","e","ed"]);
   const tokens=v=>normalizeSupplierName(v).split(/\s+/).filter(x=>x.length>=3&&!ignore.has(x));
   const sourceTokens=new Set(tokens(company));
-  const names=[...new Set(embeddedContracts.map(x=>x.supplier).filter(Boolean))];
+  const names=[...new Set(activeContractRows().map(x=>x.supplier).filter(Boolean))];
   const ranked=names.map(name=>{
     const dbCompact=canonicalSupplierName(name),dbTokens=tokens(name);
     const coverage=dbTokens.length?dbTokens.filter(x=>sourceTokens.has(x)).length/dbTokens.length:0;
@@ -398,7 +398,7 @@ function looksLikeOfficialCompanyName(value){
   return v.length>=3&&!/^(via|viale|corso|piazza|strada|localita|sede legale|codice fiscale|numero d.iscrizione|dati per duvri)\b/i.test(v);
 }
 function applySupplierRowsDirect(supplier,score,sourceName){
-  const rows=embeddedContracts.filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
+  const rows=activeContractRows().filter(x=>ContractDbImporter.norm(x.supplier)===ContractDbImporter.norm(supplier));
   if(!rows.length)return false;
   const cinemaNames=[...new Set(rows.map(x=>x.cinema).filter(Boolean))];
   const workNames=[...new Set(rows.map(x=>x.workType).filter(Boolean))];
@@ -446,6 +446,26 @@ $("workSelect").addEventListener("change",()=>{
 });
 $("contractDbFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const status=$("contractDbStatus");try{status.textContent="Importazione in corso...";status.className="status";const contracts=await ContractDbImporter.read(file);setup.contracts=contracts;setup.workTypes=ContractDbImporter.workTypes(contracts);syncCinemasFromContracts();StorageService.save(setup);renderSetup();status.textContent=`Database importato: ${contracts.length} abbinamenti e ${setup.workTypes.length} tipologie.`;status.className="status ok"}catch(err){console.error(err);status.textContent=err.message||"Errore durante l'importazione.";status.className="status error"}finally{e.target.value=""}};
 
+
+function invalidExtractedCompany(value){
+  const v=String(value||"").trim();
+  return !v || /\b(qr\s*code|consente\s+di\s+verificare|corrispondenza\s+tra\s+questo|documento\s+informatico|camera\s+di\s+commercio|registro\s+delle\s+imprese|visura\s+(?:ordinaria|camerale)|certificato\s+di\s+iscrizione)\b/i.test(v);
+}
+function companyFromDocumentNames(files){
+  const preferred=(files||[]).filter(f=>/(?:cciaa|visura|camerale)/i.test(f.name||""));
+  for(const file of preferred){
+    let name=String(file.name||"")
+      .replace(/\.(pdf|docx?|png|jpe?g)$/i,"")
+      .replace(/\b(?:cciaa|visura|camerale|camera di commercio|certificato|cert)\b.*$/i,"")
+      .replace(/\b(?:allegato|documento|copia)\b/ig," ")
+      .replace(/\b(?:0?[1-9]|1[0-2])[-_/]20\d{2}\b/g," ")
+      .replace(/\b20\d{2}\b/g," ")
+      .replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
+    if(name.length>=3&&!invalidExtractedCompany(name))return cleanDisplayedCompanyName(name);
+  }
+  return "";
+}
+
 $("extractBtn").onclick=async()=>{
   if(!supportFiles.length){showStatus("Carica prima almeno un documento.","error");return}
   showStatus("Lettura documenti in corso... I file scansionati possono richiedere più tempo.");
@@ -453,8 +473,16 @@ $("extractBtn").onclick=async()=>{
   if(!documentFiles.length){showStatus("Database Excel importato. Aggiungi visura, polizza o DURC per recuperare altri dati.","ok");return}
   const result=await DocumentParser.extract(documentFiles,(name,n,total)=>showStatus(`Lettura ${n}/${total}: ${name}`));
   Object.entries(result.values).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});if($("inpsPosition").value)$("inpsPosition").value=formatInps($("inpsPosition").value);
-  const extractedCompany=cleanDisplayedCompanyName(result.values.companyName||$("companyName").value);
+  let extractedCompany=cleanDisplayedCompanyName(result.values.companyName||$("companyName").value);
+  if(invalidExtractedCompany(extractedCompany)){
+    extractedCompany=companyFromDocumentNames(documentFiles);
+    if(extractedCompany){
+      result.values.companyName=extractedCompany;
+      result.evidence.unshift({field:"companyName",label:"Ragione sociale",value:extractedCompany,source:"nome file visura/CCIAA",sourceType:"filename",confidence:.90});
+    }
+  }
   $("documentCompanyName").value=extractedCompany;
+  if(extractedCompany)$("companyName").value=extractedCompany;
   const dbAutoMatched=autoSelectFromCompany();
   renderReview(result);
   const evidenceText=(result.evidence||[]).map(item=>`${item.label||""} ${item.value||""}`).join("\n");

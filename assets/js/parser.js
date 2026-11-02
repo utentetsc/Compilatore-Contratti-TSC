@@ -6,11 +6,16 @@ const DocumentParser = (() => {
     if(!window.pdfjsLib)throw new Error("Libreria PDF non disponibile");
     pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
     const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let text="";
-    const forceOcr=/(?:polizza|assicurazione|cciaa|camerale|visura)/i.test(file.name||"");
+    // OCR solo quando la pagina non contiene testo digitale sufficiente.
+    // La versione precedente forzava l'OCR su ogni pagina di visure e polizze,
+    // rallentando molto la lettura e duplicando il testo in ordine non affidabile.
+    const ocrCandidate=/(?:polizza|assicurazione|cciaa|camerale|visura)/i.test(file.name||"");
     for(let i=1;i<=pdf.numPages;i++){
       const page=await pdf.getPage(i),content=await page.getTextContent();
       let pageText=content.items.map(x=>x.str).join(" ");
-      if((forceOcr||pageText.replace(/\s/g,"").length<250)&&window.Tesseract){
+      const compactLength=pageText.replace(/\s/g,"").length;
+      const needsOcr=compactLength<250 || (ocrCandidate && compactLength<500);
+      if(needsOcr&&window.Tesseract){
         const viewport=page.getViewport({scale:2}),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
         canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
         await page.render({canvasContext:ctx,viewport}).promise;
@@ -55,7 +60,11 @@ const DocumentParser = (() => {
   function normalizeField(field,value){
     value=clean(value);
     if(field==="companyName"){
+      // Esclude intestazioni, avvertenze del QR code e frasi descrittive OCR.
+      // Queste frasi non possono mai essere una ragione sociale.
       if(/^(via|viale|corso|piazza|strada|localita|sede legale|codice fiscale|numero d.iscrizione|registro imprese|partita iva|dati per duvri|attivit[aà]|stato attivit[aà]|data inizio attivit[aà]|dati anagrafici|l.impresa in cifre|forma giuridica|sede)\b/i.test(value))return "";
+      if(/\b(qr\s*code|consente\s+di\s+verificare|corrispondenza\s+tra\s+questo|documento\s+informatico|camera\s+di\s+commercio|registro\s+delle\s+imprese|visura\s+(?:ordinaria|camerale)|certificato\s+di\s+iscrizione)\b/i.test(value))return "";
+      if(value.length>140)return "";
       return titleWords(value);
     }
     if(field==="registeredOffice")return normalizeAddress(value);

@@ -171,3 +171,11 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - corretto esclusivamente il riconoscimento di Napoli dalla sede Napoli (NA);
 - supportate sigle provinciali in maiuscolo o minuscolo;
 - nessun’altra logica modificata rispetto alla v0.6.6.
+
+
+##### Versione 0.6.8 - Ripristino parser e matching DB
+- escluse le frasi informative dei QR Code dalle ragioni sociali;
+- ripristinato il fallback dal nome delle visure/CCIAA;
+- matching eseguito sul DB attivo, anche quando importato da Excel;
+- OCR non più forzato su ogni pagina già dotata di testo digitale;
+- verifica camerale OCR eseguita solo sulle pagine prive di testo sufficiente.
