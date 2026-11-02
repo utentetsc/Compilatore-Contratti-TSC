@@ -1,0 +1,9 @@
+const ContractDbImporter = (() => {
+ const clean=v=>String(v??"").trim();
+ const norm=v=>clean(v).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+ const aliases={workType:["manutenzione","tipologia","tipologia lavorazione"],cinema:["cinema","sito"],supplier:["ditta","fornitore"],frequency:["frequenza"],amount:["importo","valore"]};
+ function findHeader(rows){for(let i=0;i<Math.min(30,rows.length);i++){const map={};rows[i].forEach((v,c)=>{for(const [k,a] of Object.entries(aliases))if(a.some(x=>norm(x)===norm(v)))map[k]=c});if(map.workType!==undefined&&map.cinema!==undefined)return {row:i,map}}throw new Error("Non trovo le colonne MANUTENZIONE e CINEMA.")}
+ async function read(file){if(!window.XLSX)throw new Error("Libreria Excel non disponibile.");const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});for(const name of wb.SheetNames){const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:"",raw:true});try{const {row,map}=findHeader(rows);const contracts=[];for(let i=row+1;i<rows.length;i++){const r=rows[i],workType=clean(r[map.workType]),cinema=clean(r[map.cinema]);if(!workType||!cinema)continue;const rawAmount=map.amount===undefined?null:r[map.amount];const amount=rawAmount===""||rawAmount==null?null:Number(rawAmount);contracts.push({workType,cinema,supplier:map.supplier===undefined?"":clean(r[map.supplier]),frequency:map.frequency===undefined?"":clean(r[map.frequency]).toUpperCase(),amount:Number.isFinite(amount)?amount:null})}if(contracts.length)return contracts}catch(e){if(name===wb.SheetNames.at(-1))throw e}}throw new Error("Nessun dato utilizzabile trovato.")}
+ function workTypes(contracts){return [...new Set(contracts.map(x=>x.workType))].sort((a,b)=>a.localeCompare(b,"it")).map((name,i)=>({id:`work-db-${i+1}`,name,description:""}))}
+ return {read,workTypes,norm};
+})();
