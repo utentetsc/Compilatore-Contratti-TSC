@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f4c81">
+  <title>Generatore Contratti</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=0.7.1-full">
+</head>
+<body>
+  <header class="app-header">
+    <div><strong>Generatore Contratti</strong><small>Elaborazione locale nel browser</small></div>
+    <nav>
+      <button class="nav-btn active" data-view="generator">Nuovo contratto</button>
+      <button class="nav-btn" data-view="setup">Setup</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section id="generator" class="view active">
+      <div class="notice">I file selezionati restano nel browser. La versione 0.7.1 Sostituzione completa - PDF nativo + DB attivo non li invia a server.</div>
+      <div class="grid two">
+        <article class="card">
+          <h2>1. Contratto master</h2>
+          <label class="drop-zone" id="masterDrop">
+            <input id="masterFile" type="file" accept=".docx" hidden>
+            <span>Trascina qui il master .docx oppure fai clic</span>
+            <strong id="masterName">Nessun file selezionato</strong>
+          </label>
+          <p class="hint">Usa il master originale con le sole parti da aggiornare evidenziate in giallo. Non servono parentesi o marcatori.</p>
+        </article>
+        <article class="card">
+          <h2>2. Documenti di supporto</h2>
+          <label class="drop-zone" id="docsDrop">
+            <input id="docsFiles" type="file" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.xlsx,.xls,.csv" multiple hidden>
+            <span>Trascina visura, assicurazione, DURC e anche DB Contratti Excel</span>
+            <strong id="docsCount">0 documenti</strong>
+            <small>PDF, DOCX, TXT, immagini e DB Contratti Excel</small>
+          </label>
+          <ul id="docsList" class="file-list"></ul>
+        </article>
+      </div>
+
+      <article class="card">
+        <h2>3. Dati del contratto</h2>
+        <div class="form-grid">
+          <label class="cinema-field">Cinema <small>Puoi selezionare più cinema</small><select id="cinemaSelect" multiple size="5"></select><span id="cinemaSelectionSummary" class="selection-summary">Nessun cinema selezionato</span></label>
+          <div id="dbMatchSummary" class="db-match-summary span-2" hidden></div>
+          <div id="supplierMatchPanel" class="supplier-match-panel span-2" hidden></div>
+          <label class="work-field">Tipologie di lavorazione <small>Selezionate automaticamente dal DB</small><select id="workSelect" multiple size="5"></select><span id="workSelectionSummary" class="selection-summary">Nessuna tipologia selezionata</span></label>
+          <label>Numero contratto<input id="contractNumber" placeholder="CTR-2026-001"></label>
+          <label>Data contratto<input id="contractDate" type="date"></label>
+          <label>Ragione sociale definitiva<input id="companyName"></label>
+          <label>Denominazione rilevata nei documenti<input id="documentCompanyName" readonly></label>
+          <label>Denominazione associata nel DB<input id="databaseCompanyName" readonly></label>
+          <label>Partita IVA<input id="vatNumber"></label>
+          <label>Codice fiscale<input id="fiscalCode"></label>
+          <label>REA<input id="rea"></label>
+          <label class="span-2">Sede legale<input id="registeredOffice"></label>
+          <label>PEC<input id="pec" type="email"></label>
+          <label>E-mail ordinaria<input id="email" type="email"></label>
+          <label>Telefono<input id="phone"></label>
+          <label>Telefono reperibilità<input id="emergencyPhone"></label>
+          <label>Posizione INPS<input id="inpsPosition"></label>
+          <label>Posizione INAIL<input id="inailPosition"></label>
+          <label>Costi della sicurezza<input id="safetyCosts" value="Euro 300,00 (trecento/00)"></label>
+          <label>Legale rappresentante<input id="legalRepresentative"></label>
+          <label>Compagnia assicurativa<input id="insuranceCompany"></label>
+          <label>Numero polizza<input id="policyNumber"></label>
+          <label>Scadenza polizza<input id="policyExpiry" type="date"></label>
+          <label>Massimale<input id="policyLimit"></label>
+          <label>Ditta / fornitore<input id="supplier"></label>
+          <label>Frequenza<input id="frequency"></label>
+          <label>Importo contrattuale<input id="contractAmount" inputmode="decimal"></label>
+          <label>Protocollo DURC<input id="durcProtocol"></label>
+          <label>Scadenza DURC<input id="durcExpiry" type="date"></label>
+          <label>Esito DURC<input id="durcStatus"></label>
+          <label>Data inizio<input id="startDate" type="date"></label>
+          <label>Data fine<input id="endDate" type="date"></label>
+        </div>
+        <div class="actions">
+          <button id="extractBtn" class="secondary">Precompila dai documenti</button>
+          <button id="generateBtn" class="primary">Genera contratto Word</button>
+        </div>
+        <div id="status" class="status" aria-live="polite"></div>
+        <section id="reviewPanel" class="review-panel" hidden>
+          <h3>Verifica dati recuperati</h3>
+          <p>I valori vengono proposti automaticamente. Controllali prima di generare il contratto.</p>
+          <div id="reviewList"></div>
+        </section>
+      </article>
+    </section>
+
+    <section id="setup" class="view">
+      <div class="grid two">
+        <article class="card">
+          <h2>Cinema</h2>
+          <div class="import-panel">
+            <label class="button secondary">Importa cinema da Excel
+              <input id="cinemaExcelFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+            </label>
+            <small>Le righe con lo stesso ID vengono aggiornate, le altre aggiunte.</small>
+            <div id="cinemaImportStatus" class="status" aria-live="polite"></div>
+          </div>
+          <form id="cinemaForm" class="inline-form">
+            <input name="name" placeholder="Nome cinema" required>
+            <input name="address" placeholder="Indirizzo">
+            <input name="city" placeholder="Città">
+            <button class="primary">Aggiungi</button>
+          </form>
+          <div id="cinemaList" class="setup-list"></div>
+        </article>
+        <article class="card">
+          <h2>Tipologie di lavorazione</h2>
+          <div class="import-panel">
+            <label class="button secondary">Importa DB contratti da Excel
+              <input id="contractDbFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+            </label>
+            <small>Importa lavorazioni, cinema, ditte, frequenze e importi.</small>
+            <div id="contractDbStatus" class="status" aria-live="polite"></div>
+          </div>
+          <form id="workForm" class="inline-form">
+            <input name="name" placeholder="Nome lavorazione" required>
+            <textarea name="description" placeholder="Descrizione"></textarea>
+            <button class="primary">Aggiungi</button>
+          </form>
+          <div id="workList" class="setup-list"></div>
+        </article>
+      </div>
+      <article class="card">
+        <h2>Backup configurazione</h2>
+        <div class="actions left">
+          <button id="exportSetup" class="secondary">Esporta JSON</button>
+          <label class="button secondary">Importa JSON<input id="importSetup" type="file" accept=".json" hidden></label>
+          <button id="resetSetup" class="danger">Ripristina esempi</button>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer>Generatore Contratti · versione 0.7.1 Sostituzione completa - PDF nativo + DB attivo</footer>
+  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.8/dist/pizzip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.62.0/build/docxtemplater.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="assets/js/storage.js?v=0.3.0"></script>
+  <script src="assets/js/contract-db-importer.js?v=0.3.0"></script>
+  <script src="assets/js/excel-importer.js?v=0.3.0"></script>
+  <script src="assets/js/parser-native-v071.js?v=20261102-1545"></script>
+  <script src="assets/js/document-generator.js?v=0.3.0"></script>
+  <script src="assets/js/yellow-word-generator.js?v=4.3.10"></script>
+  <script src="assets/js/app-native-v071.js?v=20261102-1545"></script>
+</body>
+</html>
