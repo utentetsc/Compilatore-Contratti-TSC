@@ -20,7 +20,7 @@ const DocumentParser = (() => {
         canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
         await page.render({canvasContext:ctx,viewport}).promise;
         let ocr="";
-        try{ocr=(await Tesseract.recognize(canvas,"ita")).data.text}catch(errIta){
+        try{ocr=(await Tesseract.recognize(canvas,"eng")).data.text}catch(errIta){
           console.warn("OCR italiano non disponibile, provo inglese",errIta);
           try{ocr=(await Tesseract.recognize(canvas,"eng")).data.text}catch(errEng){console.warn("OCR PDF non riuscito, pagina",i,errEng)}
         }

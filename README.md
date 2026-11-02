@@ -179,3 +179,10 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 - matching eseguito sul DB attivo, anche quando importato da Excel;
 - OCR non più forzato su ogni pagina già dotata di testo digitale;
 - verifica camerale OCR eseguita solo sulle pagine prive di testo sufficiente.
+
+
+##### Versione 0.6.9 - OCR corretto
+- sostituito il pacchetto OCR italiano non disponibile (`ita.special-words`) con il fallback OCR `eng`;
+- mantenuta l'estrazione testuale PDF come prima scelta;
+- OCR usato solo quando il testo digitale e insufficiente;
+- aggiunto marker Console `OCR build: eng-fallback-v0.6.9`.
