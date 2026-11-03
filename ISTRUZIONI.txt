@@ -1,0 +1,11 @@
+PATCH 0.7.6
+
+Base invariata: v0.7.5 matching DB, cinema, lavorazioni, frequenze e importi.
+Sostituire index.html e caricare in assets/js app-native-v076.js e parser-native-v076.js.
+Console attesa: Matching build: v0.7.6 base 0.7.5 + OCR camerale mirato + polizza
+
+Novita isolate:
+- OCR ad alto contrasto riservato al controllo camerale del file ALL B;
+- rilevamento lettere D.M. 37/2008 e ATECO su tutte le pagine camerali;
+- correzione falso positivo Generali;
+- regole aggiuntive per scadenza e massimale polizza.
