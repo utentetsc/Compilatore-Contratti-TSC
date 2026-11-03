@@ -1,8 +1,19 @@
 const YellowAreaWordGenerator=(()=>{
- const BUILD="yellow-areas-v4.3-final-place-fix-2026-10-23",W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XML="http://www.w3.org/XML/1998/namespace";
+ const BUILD="yellow-areas-v5.0-filename-fiscal-year",W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XML="http://www.w3.org/XML/1998/namespace";
  const REQUIRED=new Set(["POSIZIONE_INPS","DATI_POLIZZA","MASSIMALE","TELEFONO_REPERIBILITA"]);
  console.info("Word generator build:",BUILD);
  const clean=v=>String(v??"").replace(/\s+/g," ").trim();
+ const parseItalianDate=v=>{const x=String(v||"").trim(),m=x.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})$/);if(m){let y=+m[3];if(y<100)y+=2000;return new Date(y,+m[2]-1,+m[1])}const d=new Date(x);return Number.isNaN(d.getTime())?null:d};
+ const fiscalYear=d=>d?(d.getMonth()===11?d.getFullYear()+1:d.getFullYear()):"";
+ const supplierForFilename=v=>clean(v).replace(/\b(?:S\.?R\.?L\.?|S\.?P\.?A\.?|S\.?N\.?C\.?|S\.?A\.?S\.?)\b/gi,"").replace(/[.]/g,"").replace(/[^A-Za-zÀ-ÿ0-9 _-]/g," ").replace(/\s+/g," ").trim();
+ const safeFilename=v=>clean(v).replace(/[<>:"/\\|?*]/g," ").replace(/\s+/g," ").trim();
+ function outputFilename(data){
+   const supplier=supplierForFilename(data.RAGIONE_SOCIALE||data.DITTA||data.DENOMINAZIONE_DB)||"DITTA";
+   const start=parseItalianDate(data.DATA_INIZIO),end=parseItalianDate(data.DATA_FINE);
+   const startYear=fiscalYear(start)||"ANNO-INIZIO";
+   const endYear=end?end.getFullYear():"ANNO-FINE";
+   return safeFilename(`CONTRATTO Manutenzione ${supplier} ${startYear}-${endYear} VERSIONE 03-11-2025.docx`);
+ }
  const titleCase=v=>clean(v).toLocaleLowerCase("it-IT").replace(/(^|[\s'’-])([a-zà-ÿ])/g,(m,a,b)=>a+b.toLocaleUpperCase("it-IT"));
  const els=(r,n)=>[...r.getElementsByTagName("*")].filter(x=>x.localName===n||x.nodeName===`w:${n}`), txt=n=>els(n,"t").map(x=>x.textContent||"").join("");
  function yellow(r){const x=new XMLSerializer().serializeToString(r).toLowerCase();return /<(?:w:)?highlight\b[^>]*(?:w:)?val=["'](?:yellow|7)["']/.test(x)||/<(?:w:)?shd\b[^>]*(?:w:)?fill=["'](?:ffff00|fff2cc|yellow)["']/.test(x)}
@@ -72,6 +83,6 @@ const YellowAreaWordGenerator=(()=>{
   setParagraph(right[7],map.LEGALE_RAPPRESENTANTE||"[DA COMPILARE]",true);
   setParagraph(right[8],"Il Legale Rappresentante");
  }
- async function generate(file,data){if(typeof PizZip==="undefined")throw Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n)),files=paths.map(p=>scan(p,zip.file(p).asText())),raw=files.flatMap(x=>x.raw).filter(x=>x.text.trim()),areas=profile(raw),map=values(data),missing=[];if(!areas.length)throw Error("Nessuna area gialla riconosciuta nel master originale.");for(const a of areas){let v=a.field==="TARIFFE_STRAORDINARIE"?String(map[a.field]||""):clean(map[a.field]);if(!v&&REQUIRED.has(a.field)){v="[DA COMPILARE]";missing.push(a.field)}if(v)apply(a,v)}const main=files.find(x=>x.path==="word/document.xml");main&&signature(main.doc,map);files.forEach(f=>zip.file(f.path,new XMLSerializer().serializeToString(f.doc)));const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=`${clean(data.NUMERO_CONTRATTO)||"Contratto_compilato"}.docx`;if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}return{build:BUILD,replaced:areas.length,missing:[...new Set(missing)],technicalAreas:raw.length}}
+ async function generate(file,data){if(typeof PizZip==="undefined")throw Error("PizZip non disponibile.");const zip=new PizZip(await file.arrayBuffer()),paths=Object.keys(zip.files).filter(n=>/^word\/(document|header\d+|footer\d+)\.xml$/.test(n)),files=paths.map(p=>scan(p,zip.file(p).asText())),raw=files.flatMap(x=>x.raw).filter(x=>x.text.trim()),areas=profile(raw),map=values(data),missing=[];if(!areas.length)throw Error("Nessuna area gialla riconosciuta nel master originale.");for(const a of areas){let v=a.field==="TARIFFE_STRAORDINARIE"?String(map[a.field]||""):clean(map[a.field]);if(!v&&REQUIRED.has(a.field)){v="[DA COMPILARE]";missing.push(a.field)}if(v)apply(a,v)}const main=files.find(x=>x.path==="word/document.xml");main&&signature(main.doc,map);files.forEach(f=>zip.file(f.path,new XMLSerializer().serializeToString(f.doc)));const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"}),name=outputFilename(data);if(typeof saveAs==="function")saveAs(blob,name);else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click()}return{build:BUILD,replaced:areas.length,missing:[...new Set(missing)],technicalAreas:raw.length}}
  return{generate,BUILD};
 })();window.YellowAreaWordGenerator=YellowAreaWordGenerator;
