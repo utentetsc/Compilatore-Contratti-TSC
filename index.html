@@ -18,7 +18,7 @@
 
   <main class="container">
     <section id="generator" class="view active">
-      <div class="notice">I file selezionati restano nel browser. La versione 1.0 Versione stabile non li invia a server.</div>
+      <div class="notice">I file selezionati restano nel browser. La versione 1.0.2 Versione stabile non li invia a server.</div>
       <div class="grid two">
         <article class="card">
           <h2>1. Contratto master</h2>
@@ -63,7 +63,7 @@
           <label>Telefono reperibilità<input id="emergencyPhone"></label>
           <label>Posizione INPS<input id="inpsPosition"></label>
           <label>Posizione INAIL<input id="inailPosition"></label>
-          <label>Costi della sicurezza<input id="safetyCosts" value="Euro 300,00 (trecento/00)"></label>
+          <label>Costi della sicurezza<input id="safetyCosts" class="preset-value" value="Euro 300,00 (trecento/00)" title="Valore predefinito: verificare se deve essere modificato"></label>
           <label>Legale rappresentante<input id="legalRepresentative"></label>
           <label>Compagnia assicurativa<input id="insuranceCompany"></label>
           <label>Numero polizza<input id="policyNumber"></label>
@@ -75,8 +75,8 @@
           <label>Protocollo DURC<input id="durcProtocol"></label>
           <label>Scadenza DURC<input id="durcExpiry" type="date"></label>
           <label>Esito DURC<input id="durcStatus"></label>
-          <label>Data inizio<input id="startDate" type="date"></label>
-          <label>Data fine<input id="endDate" type="date"></label>
+          <label>Data inizio<input id="startDate" class="preset-value" type="date" title="Valore predefinito: verificare se deve essere modificato"></label>
+          <label>Data fine<input id="endDate" class="preset-value" type="date" title="Valore predefinito: verificare se deve essere modificato"></label>
         </div>
         <div class="actions">
           <button id="extractBtn" class="secondary">Precompila dai documenti</button>
@@ -138,7 +138,7 @@
     </section>
   </main>
 
-  <footer>Generatore Contratti · versione 1.0 Versione stabile</footer>
+  <footer>Generatore Contratti · versione 1.0.2 Versione stabile</footer>
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.8/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.62.0/build/docxtemplater.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -148,9 +148,9 @@
   <script src="assets/js/storage.js?v=0.3.0"></script>
   <script src="assets/js/contract-db-importer.js?v=0.3.0"></script>
   <script src="assets/js/excel-importer.js?v=0.3.0"></script>
-  <script src="assets/js/parser-native-v0759.js?v=20261103-1955"></script>
+  <script src="assets/js/parser-native-v102.js?v=20261104-1350"></script>
   <script src="assets/js/document-generator.js?v=0.3.0"></script>
-  <script src="assets/js/yellow-word-generator.js?v=5.0.0"></script>
-  <script src="assets/js/app-native-v0759.js?v=20261103-1955"></script>
+  <script src="assets/js/yellow-word-generator.js?v=5.2.0"></script>
+  <script src="assets/js/app-native-v102.js?v=20261104-1350"></script>
 </body>
 </html>
