@@ -12,3 +12,15 @@
 /* Valori predefiniti da verificare prima della generazione */
 input.preset-value{background:#dff3df !important;border-color:#7fbd84 !important;box-shadow:inset 0 0 0 1px rgba(70,130,75,.12)}
 input.preset-value:focus{background:#ecf8ec !important;border-color:#4d9655 !important}
+
+/* Alert scadenze documentali, colori pastello */
+input.expiry-alert-expired {
+  background-color: #f8d7da !important;
+  border-color: #e6a8ad !important;
+  color: #70272d !important;
+}
+input.expiry-alert-within-year {
+  background-color: #fde8c8 !important;
+  border-color: #e9bd79 !important;
+  color: #704515 !important;
+}
