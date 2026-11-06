@@ -24,3 +24,6 @@ input.expiry-alert-within-year {
   border-color: #e9bd79 !important;
   color: #704515 !important;
 }
+
+/* Archivio contratti v1.1.0 */
+.archive-toolbar{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 16px}.archive-toolbar input{flex:1;min-width:260px;padding:10px;border:1px solid #b9c4ce;border-radius:7px}.archive-toolbar select{padding:10px;border:1px solid #b9c4ce;border-radius:7px;background:#fff}.archive-summary{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.archive-chip{padding:6px 10px;border-radius:999px;background:#eaf3fb;color:#0f4c81;font-weight:700}.archive-table-wrap{overflow:auto}.archive-table{width:100%;border-collapse:collapse;font-size:13px}.archive-table th,.archive-table td{padding:10px;border-bottom:1px solid #d9e0e7;text-align:left;vertical-align:top}.archive-table th{background:#f6f9fc;position:sticky;top:0}.archive-table .expiry{display:block;padding:3px 6px;margin:2px 0;border-radius:5px;white-space:nowrap}.archive-table .expiry.expired{background:#f8d7da;color:#70272d}.archive-table .expiry.year{background:#fde8c8;color:#704515}.archive-table .expiry.ok{background:#dff3df;color:#245b2a}.archive-actions{display:flex;gap:5px;flex-wrap:wrap}.archive-actions button{padding:5px 8px}.archive-empty{text-align:center;color:#687384;padding:25px!important}
