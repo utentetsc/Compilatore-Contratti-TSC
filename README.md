@@ -179,3 +179,4 @@ Corrette tipologie in titolo, premessa ed elenco; anagrafica DUVRI; costo sicure
 
 ##### Versione 0.7.1 - Sostituzione completa
 Gli script critici hanno nomi univoci (`parser-native-v071.js` e `app-native-v071.js`) per impedire il riutilizzo di copie memorizzate della 0.6.9.
+Deploy versione 1.1.0.2
