@@ -58,6 +58,7 @@ const DocumentParser = (() => {
     // Il nome del file e piu affidabile del contenuto: le condizioni assicurative possono
     // contenere parole come certificato/iscrizione e venivano classificate come CCIAA.
     if(/polizza|quietanza|assicur/.test(fileName))return "polizza";
+    if(/(?:^|[\s_.;-])(?:all|allegato)\s*\.?\s*b(?:[\s_.;-]|$)/i.test(fileName)&&/(?:cciaa|camera|cameral|visura|certificato|iscrizione)/i.test(fileName))return "allegato_b";
     if(/duvri|anagrafica|dati.*fornitore/.test(fileName))return "duvri";
     if(/durc/.test(fileName))return "durc";
     const hay=`${fileName} ${String(text||"").slice(0,5000)}`.toLowerCase();
@@ -160,7 +161,7 @@ const DocumentParser = (() => {
     // Visure InfoCamere a piu colonne: la denominazione completa ricompare
     // nell'intestazione delle pagine fra "Registro Imprese" e "Archivio ufficiale".
     // Regola generale, indipendente dalla ditta e dal nome esatto del file.
-    if(sourceType==="visura"||sourceType==="certificato"){
+    if(sourceType==="allegato_b"||sourceType==="visura"||sourceType==="certificato"){
       // Nelle visure InfoCamere il nome compare sulla stessa riga di
       // "Registro Imprese", nella colonna destra. Limitiamo il match alla
       // singola riga per non attraversare intestazioni come "Industria
@@ -386,10 +387,28 @@ const DocumentParser = (() => {
     if(/risulta\s+regolare|regolare\s+nei\s+confronti/i.test(text))add("durcStatus","Regolare",.94);
     return out;
   }
-  async function extract(files,onProgress){const all=[];for(let i=0;i<files.length;i++){const f=files[i];onProgress?.(f.name,i+1,files.length);try{const text=await fileText(f);all.push(...extractFromText(text,f))}catch(err){all.push({error:true,source:f.name,message:err.message})}}return merge(all)}
+  function inputPriority(file){
+    const n=String(file?.name||"").toLowerCase();
+    // 1) Allegato B camerale, 2) DUVRI, 3) altra visura/camerale, 4) resto.
+    if(/(?:^|[\s_.;-])(?:all|allegato)\s*\.?\s*b(?:[\s_.;-]|$)/i.test(n)&&/(?:cciaa|camera|cameral|visura|certificato|iscrizione)/i.test(n))return 0;
+    if(/duvri|dati.*fornitore|anagrafica.*fornitore/i.test(n))return 1;
+    if(/cciaa|camera|cameral|visura|certificato.*iscrizione/i.test(n))return 2;
+    return 3;
+  }
+  async function extract(files,onProgress){
+    const all=[];
+    const ordered=[...files].map((file,index)=>({file,index,priority:inputPriority(file)})).sort((a,b)=>a.priority-b.priority||a.index-b.index);
+    for(let i=0;i<ordered.length;i++){
+      const f=ordered[i].file;
+      onProgress?.(f.name,i+1,ordered.length);
+      try{const text=await fileText(f);all.push(...extractFromText(text,f))}
+      catch(err){all.push({error:true,source:f.name,message:err.message})}
+    }
+    return merge(all)
+  }
   function sourcePriority(field,type){
     const rules={
-      companyName:{certificato:700,visura:500,duvri:300,altro:100,polizza:50,durc:50},
+      companyName:{allegato_b:1000,certificato:700,duvri:650,visura:500,altro:100,polizza:50,durc:50},
       registeredOffice:{sede_ufficiale:1000,certificato:700,visura:500,duvri:300,altro:100,polizza:50,durc:50},
       legalRepresentative:{duvri:1000,certificato:650,visura:500,altro:100,polizza:40,durc:40},
       vatNumber:{certificato:700,visura:500,duvri:300,durc:150,altro:100},fiscalCode:{certificato:700,visura:500,duvri:300,durc:150,altro:100},rea:{certificato:700,visura:500,duvri:250,altro:100},pec:{certificato:700,visura:500,duvri:350,altro:100},
