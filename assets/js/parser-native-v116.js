@@ -153,9 +153,31 @@ const DocumentParser = (() => {
     const letters=words.join("").replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g,"");
     return words.length>=2&&words.length<=6&&letters.length>=8?v:"";
   }
+  function companyFromAllB(text){
+    const raw=String(text||"").replace(/\u00a0/g," ");
+    const compact=raw.replace(/[ \t]+/g," ");
+    const patterns=[
+      /VISURA\s+ORDINARIA\s+DELL['’]IMPRESA\s+([\s\S]{3,180}?)(?=\s+DATI\s+ANAGRAFICI|\s+Il\s+QR\s+Code|\s+[A-Z0-9]{5,12}\s+Il\s+QR)/i,
+      /VISURA\s+ORDINARIA\s+(?:SOCIET[AÀ]\s+DI\s+CAPITALE|DELLA\s+SOCIET[AÀ])\s+([\s\S]{3,180}?)(?=\s+DATI\s+ANAGRAFICI|\s+Il\s+QR\s+Code)/i,
+      /(?:^|\n)\s*Denominazione\s*[:\-]?\s*([^\n]{3,160})/im
+    ];
+    for(const re of patterns){
+      const m=compact.match(re);if(!m?.[1])continue;
+      let v=clean(m[1])
+        .replace(/\b(?:RYX|RI)[A-Z0-9]{4,12}\b.*$/i,"")
+        .replace(/\bIl\s+QR\s+Code.*$/i,"")
+        .replace(/\s+/g," ").trim();
+      if(v&& !/^(?:ARTIGIANA|ARTIGIANO|IMPRESA\s+ARTIGIANA|DATI\s+ANAGRAFICI)$/i.test(v))return v;
+    }
+    return "";
+  }
   function extractFromText(text,file){
     const sourceType=documentType(text,file);
     const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};
+    if(sourceType==="allegato_b"){
+      const allBCompany=companyFromAllB(text);
+      if(allBCompany)add("companyName",allBCompany,2.0);
+    }
     const officialOffice=officialRegisteredOffice(text);
     if(officialOffice)out.push(evidence("registeredOffice",officialOffice,{name:file.name},1,"sede_ufficiale"));
     // Visure InfoCamere a piu colonne: la denominazione completa ricompare
@@ -424,6 +446,7 @@ const DocumentParser = (() => {
       const normalized=normalizeField(raw.field,raw.value);
       if(!normalized)continue;
       const x={...raw,value:normalized},current=chosen[x.field];
+      if(x.field==="companyName"&&/^(?:ARTIGIANA|ARTIGIANO|IMPRESA\s+ARTIGIANA|DATI\s+ANAGRAFICI|REGISTRO\s+IMPRESE|ARCHIVIO\s+UFFICIALE|DITTA|FORNITORE)$/i.test(x.value))continue;
       if(!current){chosen[x.field]=x;continue}
       if(current.value===x.value)continue;
       conflicts.push({field:x.field,label:x.label,values:[current,x]});
