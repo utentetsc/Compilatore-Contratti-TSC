@@ -520,7 +520,8 @@ $("extractBtn").onclick=async()=>{
   Object.entries(result.values).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});if($("inpsPosition").value)$("inpsPosition").value=formatInps($("inpsPosition").value);
   // Ragione sociale: Allegato B / CCIAA come fonte principale; DUVRI come confronto.
   // Le regole sono generali e non contengono nomi, P.IVA o alias di singole ditte.
-  const companyEvidence=(result.evidence||[]).filter(x=>x.field==="companyName"&&looksLikeOfficialCompanyName(x.value));
+  const genericCompanyValue=value=>/^(?:ARTIGIANA|ARTIGIANO|IMPRESA\s+ARTIGIANA|DATI\s+ANAGRAFICI|REGISTRO\s+IMPRESE|ARCHIVIO\s+UFFICIALE|DITTA|FORNITORE)$/i.test(String(value||"").trim());
+  const companyEvidence=(result.evidence||[]).filter(x=>x.field==="companyName"&&looksLikeOfficialCompanyName(x.value)&&!genericCompanyValue(x.value));
   const isAllBOrCciaa=source=>/(?:^|[\s_.;-])ALL\s*B(?:[\s_.;-]|$)|CCIAA|VISURA|CAMERALE|CERTIFICATO\s+DI\s+ISCRIZIONE/i.test(String(source||""));
   const isDuvri=source=>/DUVRI|DATI\s+PER\s+DUVRI\s+FORNITORE/i.test(String(source||""));
   const normalizeDocumentCompany=value=>cleanDisplayedCompanyName(value).replace(/\s+/g," ").trim();

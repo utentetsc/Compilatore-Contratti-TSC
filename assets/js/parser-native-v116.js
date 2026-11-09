@@ -161,8 +161,15 @@ const DocumentParser = (() => {
     // nell'intestazione delle pagine fra "Registro Imprese" e "Archivio ufficiale".
     // Regola generale, indipendente dalla ditta e dal nome esatto del file.
     if(sourceType==="visura"||sourceType==="certificato"){
-      const headerCompany=first(text,[
-        /Registro\s+Imprese\s+([A-ZÀ-Ü0-9][A-ZÀ-Ü0-9 &'’.\/-]{2,140}?)\s+Archivio\s+ufficiale/i,
+      // Nelle visure InfoCamere il nome compare sulla stessa riga di
+      // "Registro Imprese", nella colonna destra. Limitiamo il match alla
+      // singola riga per non attraversare intestazioni come "Industria
+      // Artigianato" o la dicitura "Impresa artigiana".
+      const registryRows=[...String(text||"").matchAll(/^\s*Registro\s+Imprese[ \t]+([^\r\n]{3,180})\s*$/gim)]
+        .map(m=>String(m[1]||"").trim())
+        .filter(v=>!/^[-–—:]?\s*Archivio\s+ufficiale/i.test(v))
+        .filter(v=>!/(?:estratto|data|codice\s+fiscale|numero\s+di\s+iscrizione)/i.test(v));
+      const headerCompany=registryRows.sort((a,b)=>b.length-a.length)[0]||first(text,[
         /VISURA\s+ORDINARIA\s+DELL['’]IMPRESA\s+([A-ZÀ-Ü0-9][A-ZÀ-Ü0-9 &'’.\/-]{2,140}?)(?=\s+DATI\s+ANAGRAFICI|\s+Registro\s+Imprese|$)/i
       ]);
       if(headerCompany)add("companyName",headerCompany,.9999);
