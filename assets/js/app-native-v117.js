@@ -518,24 +518,27 @@ $("extractBtn").onclick=async()=>{
   if(!documentFiles.length){showStatus("Database Excel importato. Aggiungi visura, polizza o DURC per recuperare altri dati.","ok");return}
   const result=await DocumentParser.extract(documentFiles,(name,n,total)=>showStatus(`Lettura ${n}/${total}: ${name}`));
   Object.entries(result.values).forEach(([k,v])=>{if($(k)&&v)$(k).value=v});if($("inpsPosition").value)$("inpsPosition").value=formatInps($("inpsPosition").value);
-  // Valuta tutte le denominazioni trovate. Il certificato principale resta prioritario
-  // per i dati camerali, ma una riga OCR generica (es. "IN Cifre") non puo sostituire
-  // una denominazione che trova una corrispondenza reale nel DB.
-  const namesFromFiles=documentFiles.map(f=>String(f.name||"")
-    .replace(/\.(pdf|docx?|png|jpe?g)$/i,"")
-    .replace(/\b(?:cciaa|visura|camerale|polizza|durc|duvri|certificato|offerta|capitolato)\b[\s\S]*$/i,"")
-    .replace(/^(?:all(?:egato)?\s*[a-z0-9. -]*\s*)/i,"")
-    .replace(/[_-]+/g," ").replace(/\s+/g," ").trim());
-  const companyCandidates=[...new Set([
-    ...(result.evidence||[]).filter(x=>x.field==="companyName").map(x=>cleanDisplayedCompanyName(x.value)),
-    ...namesFromFiles.map(cleanDisplayedCompanyName),
-    cleanDisplayedCompanyName(result.values.companyName||""),
-    cleanDisplayedCompanyName($("companyName").value||"")
-  ].filter(looksLikeOfficialCompanyName))];
-  const rankedCandidates=companyCandidates.map(name=>({name,ranked:deterministicSupplierMatch(name)}))
-    .map(x=>({...x,score:x.ranked?.[0]?.score||0}))
-    .sort((a,b)=>b.score-a.score||b.name.length-a.name.length);
-  const extractedCompany=rankedCandidates[0]?.name||companyCandidates[0]||"";
+  // Ragione sociale: Allegato B / CCIAA come fonte principale; DUVRI come confronto.
+  // Le regole sono generali e non contengono nomi, P.IVA o alias di singole ditte.
+  const companyEvidence=(result.evidence||[]).filter(x=>x.field==="companyName"&&looksLikeOfficialCompanyName(x.value));
+  const isAllBOrCciaa=source=>/(?:^|[\s_.;-])ALL\s*B(?:[\s_.;-]|$)|CCIAA|VISURA|CAMERALE|CERTIFICATO\s+DI\s+ISCRIZIONE/i.test(String(source||""));
+  const isDuvri=source=>/DUVRI|DATI\s+PER\s+DUVRI\s+FORNITORE/i.test(String(source||""));
+  const normalizeDocumentCompany=value=>cleanDisplayedCompanyName(value).replace(/\s+/g," ").trim();
+  const sameCompany=(a,b)=>{
+    const na=normalizeSupplierName(a),nb=normalizeSupplierName(b);
+    if(!na||!nb)return false;
+    if(canonicalSupplierName(na)===canonicalSupplierName(nb))return true;
+    const ta=new Set(na.split(/\s+/).filter(x=>x.length>=3)),tb=nb.split(/\s+/).filter(x=>x.length>=3);
+    return tb.length>0&&tb.filter(x=>ta.has(x)).length/Math.min(ta.size||1,tb.length)>=0.75;
+  };
+  const cciaaCandidates=[...new Set(companyEvidence.filter(x=>isAllBOrCciaa(x.source)).map(x=>normalizeDocumentCompany(x.value)))];
+  const duvriCandidates=[...new Set(companyEvidence.filter(x=>isDuvri(x.source)).map(x=>normalizeDocumentCompany(x.value)))];
+  const otherCandidates=[...new Set(companyEvidence.map(x=>normalizeDocumentCompany(x.value)))];
+  const ranked=value=>({name:value,db:deterministicSupplierMatch(value),score:deterministicSupplierMatch(value)?.[0]?.score||0});
+  const rankedCciaa=cciaaCandidates.map(ranked).sort((a,b)=>b.score-a.score||b.name.length-a.name.length);
+  const confirmedCciaa=rankedCciaa.find(c=>duvriCandidates.some(d=>sameCompany(c.name,d)))||rankedCciaa[0];
+  const fallback=otherCandidates.map(ranked).sort((a,b)=>b.score-a.score||b.name.length-a.name.length)[0];
+  const extractedCompany=confirmedCciaa?.name||fallback?.name||normalizeDocumentCompany(result.values.companyName||"");
   $("documentCompanyName").value=extractedCompany;
   if(extractedCompany)$("companyName").value=extractedCompany;
   const dbAutoMatched=autoSelectFromCompany();

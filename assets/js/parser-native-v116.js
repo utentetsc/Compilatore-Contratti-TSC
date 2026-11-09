@@ -157,6 +157,16 @@ const DocumentParser = (() => {
     const out=[], add=(field,value,confidence=0.82)=>{value=clean(value).replace(/^[/\\|:;,-]+\s*/,"");if(value)out.push(evidence(field,value,file,confidence,sourceType))};
     const officialOffice=officialRegisteredOffice(text);
     if(officialOffice)out.push(evidence("registeredOffice",officialOffice,{name:file.name},1,"sede_ufficiale"));
+    // Visure InfoCamere a piu colonne: la denominazione completa ricompare
+    // nell'intestazione delle pagine fra "Registro Imprese" e "Archivio ufficiale".
+    // Regola generale, indipendente dalla ditta e dal nome esatto del file.
+    if(sourceType==="visura"||sourceType==="certificato"){
+      const headerCompany=first(text,[
+        /Registro\s+Imprese\s+([A-ZÀ-Ü0-9][A-ZÀ-Ü0-9 &'’.\/-]{2,140}?)\s+Archivio\s+ufficiale/i,
+        /VISURA\s+ORDINARIA\s+DELL['’]IMPRESA\s+([A-ZÀ-Ü0-9][A-ZÀ-Ü0-9 &'’.\/-]{2,140}?)(?=\s+DATI\s+ANAGRAFICI|\s+Registro\s+Imprese|$)/i
+      ]);
+      if(headerCompany)add("companyName",headerCompany,.9999);
+    }
     // Visure scannerizzate InfoCamere: le etichette sono spesso in una colonna e i valori
     // in una seconda colonna, quindi non sono necessariamente adiacenti nel testo OCR.
     if(/VISURA\s+(?:ORDINARIA|STORICA)|REGISTRO\s+IMPRESE|INFOCAMERE/i.test(text)){
